@@ -32,6 +32,16 @@ Data Stack size         : 1024
 #define PARITY_ERROR (1<<UPE0)
 #define DATA_OVERRUN (1<<DOR0)
 
+// --- Konfiguracja pinów RS485 ---
+/*
+#define RS485_DIR_DDR  DDRD
+#define RS485_DIR_PORT PORTD
+#define PIN_DE 6
+#define PIN_RE 7
+
+#define RS485_TX_MODE()  { RS485_DIR_PORT |= (1<<PIN_DE) | (1<<PIN_RE); }
+#define RS485_RX_MODE()  { RS485_DIR_PORT &= ~((1<<PIN_DE) | (1<<PIN_RE)); }
+*/
 // --- Konfiguracja Modbus ---
 #define SLAVE_ID 0x01 //127
 #define F_CPU 16000000UL
@@ -63,7 +73,6 @@ while ((UCSR1A & DATA_REGISTER_EMPTY)==0);
 UDR1=c;
 }
 #pragma used-
-
 
 
 #include <stdio.h>
@@ -109,7 +118,7 @@ int jest_pret_pod_czujnikami;
 int czas_silnika_dokrecajacego_grzybki, czas_silnika_dokrecajacego_grzybki_stala;
 int il_pretow_gwintowanych;
 int dlugosc_preta_gwintowanego;
-volatile long int sek0,sek1,sek2,sek3,sek4,sek5;
+volatile long int sek0,sek1,sek2,sek3,sek4;
 long int sek0_7s,sek1_7s,sek2_7s,sek3_7s;
 long int czas_monterow,czas_na_transport_preta;
 long int monter_1_time, monter_2_time, monter_3_time;
@@ -158,7 +167,6 @@ int wielkosc_kamienia_duze_puchary;
 int wielkosc_kamienia_duze_puchary_old;
 int wiezyczka_prozniowa_global;
 int na_pewno_przejechalem_grzebieniami_global;
-int tryb_kontynuacji;
 
 
 
@@ -257,64 +265,6 @@ i2c_stop();
 return PORT.bits.b7; 
 }
 
-
-int odpytaj_parametr_panelu_duze_liczby(int adr1, int adr2)
-{
-int wynik = 0; 
-int oleole = 0;
-
-putchar(90);
-putchar(165);
-putchar(4);
-putchar(131);
-putchar(adr1);
-putchar(adr2);  //adres zmiennej - 5010
-putchar(1);   
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-oleole = getchar();
-wynik = getchar();
-
-if(oleole > 0)
-        wynik = oleole * 255 + wynik + oleole;
-
-return wynik;
-}
-
-
-
-int odpytaj_parametr_panelu(int adr1, int adr2)
-{
-int wynik = 0; 
-
-putchar(90);
-putchar(165);
-putchar(4);
-putchar(131);
-putchar(adr1);
-putchar(adr2);  //adres zmiennej - 5010
-putchar(1);   
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-getchar();
-wynik = getchar();
-
-     
-return wynik;
-}
-
-////////////////////
 
 
 // --- CRC16 Modbus ---
@@ -452,8 +402,6 @@ unsigned char delta_read_param(unsigned char group,
 }
 
 
-
-
 void sterowanie_tasmociagami_monterow()
 {
 /*
@@ -486,8 +434,7 @@ sek0++;
 sek1++;
 sek2++;
 sek3++;
-sek4++;  //do nowego przenoszenia tasmociagu lanuchowego
-sek5++;  //do orientatora grzybkow 
+sek4++;  //do nowego przenoszenia tasmociagu lanuchowego 
 
 msek_clock++;
 if(msek_clock == 60)
@@ -521,24 +468,43 @@ void orientator_grzybkow()
 if(sprawdz_pin1(PORTHH,0x73) == 1)
     {
     PORTA.4 = 1;
-    sek5 = 0;   
+    //if(grzybek == 0)
+    //   {
+    //   il_grzybkow++;
+    //   grzybek = 1;
+    //   
     }
-//if(PORTA.4 == 1 && sprawdz_pin1(PORTHH,0x73) == 0)
-//    czas_zaloczonego_orientatora++;    
+if(PORTA.4 == 1 & sprawdz_pin1(PORTHH,0x73) == 0)
+    czas_zaloczonego_orientatora++;    
     
-//if(sprawdz_pin1(PORTHH,0x73) == 0 & czas_zaloczonego_orientatora > 100000) //zmieniam z 10000
-//    {
-//    czas_zaloczonego_orientatora = 0;
-//    PORTA.4 = 0;
-//    grzybek = 0;
-//    }
-
-if(sprawdz_pin1(PORTHH,0x73) == 0 && sek5 > 7300)  //okolo 2 min
+if(sprawdz_pin1(PORTHH,0x73) == 0 & czas_zaloczonego_orientatora > 100000) //zmieniam z 10000
     {
+    czas_zaloczonego_orientatora = 0;
     PORTA.4 = 0;
-    sek5 = 0;   
+    grzybek = 0;
     }
 
+
+}
+
+int kontrola_grzyb()
+{
+int k;
+
+/*
+if(il_grzybkow < 7)
+    k = 0;
+else
+    k = 1;
+if(il_grzybkow >= 7 | sprawdz_pin1(PORTHH,0x73) == 0)
+    k = 1;
+
+*/
+
+k = 1; //na pewno beda grzybki
+
+
+return k;
 }
 
 
@@ -980,20 +946,6 @@ putchar(144);  //adres 90 - 144
 printf("Nie wykryto wiezyczki czerwonej - zresetuj");  //43
 }
 
-
-void komunikat_23_panel()
-{
-putchar(90);
-putchar(165);                    
-putchar(40);       //ilosc liter 37 + 3
-putchar(130);  //82
-putchar(0);    //0
-putchar(144);  //adres 90 - 144
-printf("Podaj ilosc pucharow i nacisnij start");  //37
-}
-
-
-
 void komunikat_czysc_na_panel()
 {
 putchar(90);
@@ -1003,17 +955,6 @@ putchar(130);  //82
 putchar(0);    //0
 putchar(144);  //adres 70 - 112
 printf("                                                  ");
-
-
-//putchar(90);
-//putchar(165);
-//putchar(68); //38      //ilosc liter 50 + 3 //TU ZMIENIAM NORMALNIE SIE DODAJE??
-//putchar(130);  //82
-//putchar(0);    //0
-//putchar(144);  //adres 70 - 112
-//printf("                                                                 ");
-
-
 }
 
 void przeslij_parametry_do_slave(char pomocnicza,char numer)
@@ -1587,7 +1528,7 @@ putchar(130);  //82
 putchar(96);    //20
 putchar(0);  //adres 60
 putchar(0);    //00
-putchar(150);   //   //50 55 60 65 70 75  
+putchar(125);   //   //50 55 60 65 70 75  
 
 
 //predkosc lancuchowy
@@ -1598,7 +1539,7 @@ putchar(130);  //82
 putchar(96);    //20
 putchar(16);  //adres 60
 putchar(0);    //00
-putchar(155);   //   //50 55 60 65 70 75  
+putchar(125);   //   //50 55 60 65 70 75  
 
 
 
@@ -1610,7 +1551,7 @@ putchar(130);  //82
 putchar(96);    //20
 putchar(32);  //adres 60
 putchar(0);    //00
-putchar(250);   //   //50 55 60 65 70 75  
+putchar(125);   //   //50 55 60 65 70 75  
 
 }
 
@@ -2145,19 +2086,7 @@ case 0:  //zmieniam 28.06 bylo 0
                         wiezyczka_prozniowa = 0;
                     else
                         wiezyczka_prozniowa = 1;
-                    
-                    if(wiezyczka_prozniowa == 0)
-                       {
-                       PORT_F.bits.b3 = 0;   //informacja do szaly kolo nakracenia ze jest proznia
-                       PORTF = PORT_F.byte;
-                       }
-                    else
-                        {
-                        PORT_F.bits.b3 = 1;   //informacja do szaly kolo nakracenia ze jest proznia
-                        PORTF = PORT_F.byte;
-                        }
-                    
-                    
+   
                     zaloczono_kurtyne = 0;
                     PORTE.5 = 1;
                     PORT_F.bits.b2 = 1;   //zadanie zzsuniecia lapek
@@ -3114,18 +3043,6 @@ while(zwrot == 1 | zwrot == 2 | zwrot == 3 | zwrot == 4 | sekwencja == 0 | sekwe
                     if(sprawdz_pin7(PORTKK,0x79) == 0 & sprawdz_pin3(PORTKK,0x79) == 0 && czekaj_na_reset == 0)
                     {
                     wiezyczka_prozniowa = sprawdz_czy_wiezyczka_prozniowa();
-                    if(wiezyczka_prozniowa == 0)
-                       {
-                       PORT_F.bits.b3 = 0;   //informacja do szaly kolo nakracenia ze jest proznia
-                       PORTF = PORT_F.byte;
-                       }
-                    else
-                        {
-                        PORT_F.bits.b3 = 1;   //informacja do szaly kolo nakracenia ze jest proznia
-                        PORTF = PORT_F.byte;
-                        }
-                     
-                    
                     porownaj_wielkosc_kamienia_old();  //to spowalnia o okolo 1s jezeli jest zmiana kamienia
                     zaloczono_kurtyne = 0;
                     komunikat_czysc_na_panel();
@@ -3335,9 +3252,6 @@ int zwrot = 0;
 int liczenie = 0;
 int rozpoczalem_ruch_preta = 0;
 int zwloka_czasowa = 0;
-int predkosc = 0;
-int predkosc_obliczona = 0;
-
 long int time = 0;
 long int time1 = 0;
 int przenies_przez_falownik = 0;
@@ -3528,23 +3442,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
            case 0:                
                     if(sprawdz_pin7(PORTKK,0x79) == 0 & sprawdz_pin3(PORTKK,0x79) == 0 && czekaj_na_reset == 0)
                     {
-                    predkosc = odpytaj_parametr_panelu(96,16);
-                    predkosc_obliczona = -100 * predkosc; 
-                    delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
-                    
                     wiezyczka_prozniowa = sprawdz_czy_wiezyczka_prozniowa();
-                    if(wiezyczka_prozniowa == 0)
-                       {
-                       PORT_F.bits.b3 = 0;   //informacja do szaly kolo nakracenia ze jest proznia
-                       PORTF = PORT_F.byte;
-                       }
-                    else
-                        {
-                        PORT_F.bits.b3 = 1;   //informacja do szaly kolo nakracenia ze jest proznia
-                        PORTF = PORT_F.byte;
-                        }
-                    
-                    
                     wiezyczka_prozniowa_global = wiezyczka_prozniowa; 
                     porownaj_wielkosc_kamienia_old();  //to spowalnia o okolo 1s jezeli jest zmiana kamienia
                     zaloczono_kurtyne = 0;
@@ -3688,15 +3586,6 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                                                       //&& (sprawdz_pin5(PORTGG,0x71)== 0)
                     if(sprawdz_pin6(PORTKK,0x79) == 1)  //ze stoi
                     {
-                        //if(sek4 < 12) //minelo 0.2s od uruchoemienia, jechal za krotko
-                        //    {
-                        //    sekwencja = 1;
-                        //    PORTE.5 = 1;  //sekwkencja startowa
-                        //    sek4 = 0;
-                        //    }
-                        
-                        
-                        
                         if(sprawdz_pin5(PORTGG,0x71)== 0 && start >1)
                             {
                             komunikat_czysc_na_panel();
@@ -3802,12 +3691,36 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
     
     time++;
     time1++;
-    orientator_grzybkow();
     }//while
 
    
 
 
+}
+
+int odpytaj_parametr_panelu(int adr1, int adr2)
+{
+int wynik = 0; 
+
+putchar(90);
+putchar(165);
+putchar(4);
+putchar(131);
+putchar(adr1);
+putchar(adr2);  //adres zmiennej - 5010
+putchar(1);   
+getchar();
+getchar();
+getchar();
+getchar();
+getchar();
+getchar();
+getchar();
+getchar();
+wynik = getchar();
+
+     
+return wynik;
 }
 
 
@@ -3834,7 +3747,6 @@ int obrot_przez_optoprzekaznik = 0;
 int silownik_dokrecania_grzybka = 0;
 int przyspiesznie = 0;
 int predkosc = 0;
-int predkosc_obliczona = 0;
 int opoznienie = 0;
 
 
@@ -4004,27 +3916,15 @@ silownik_kolejkujacy_pierwszy = getchar();
     
 if(silownik_kolejkujacy_pierwszy == 1)
     {
-    // PORT_F.bits.b5 = 1;   //lanie kleju
-    // PORTF = PORT_F.byte;
+     PORT_F.bits.b5 = 1;   //lanie kleju
+     PORTF = PORT_F.byte;
     //PORTC.7 = 1;
-    
-    PORTC.2 = 1;   //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-    PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
-    
-    
-    
     }
 else
     {
     //PORTC.7 = 0;
-    //PORT_F.bits.b5 = 0;   //lanie kleju
-    //PORTF = PORT_F.byte;
-    
-    PORTC.2 = 0;   //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
-    
-    
-    
+    PORT_F.bits.b5 = 0;   //lanie kleju
+    PORTF = PORT_F.byte;
     } 
     
 
@@ -4047,19 +3947,14 @@ silownik_kolejkujacy_drugi = getchar();
     
 if(silownik_kolejkujacy_drugi == 1)
     {
-    //PORT_F.bits.b6 = 1;   //psikanie powietrzenbem na wiezyczke
-    //PORTF = PORT_F.byte;
+    PORT_F.bits.b6 = 1;   //psikanie powietrzenbem na wiezyczke
+    PORTF = PORT_F.byte;
     //PORTC.6 = 1;
-    PORTC.1 = 1; //pobierz grzybek - pojedz po grzybek od biura
-    
     }
 else
     {
-    
-    PORTC.1 = 0; //pobierz grzybek czyli jedz do biura
-    
-    //PORT_F.bits.b6 = 0;   //psikanie powietrzenbem na wiezyczke
-    //PORTF = PORT_F.byte;
+    PORT_F.bits.b6 = 0;   //psikanie powietrzenbem na wiezyczke
+    PORTF = PORT_F.byte;
     //PORTC.6 = 0; 
     }
 
@@ -4231,21 +4126,17 @@ if(krok_tasmociagu_z_lufami == 1)
      {
      przyspiesznie = odpytaj_parametr_panelu(96,0);
      predkosc = odpytaj_parametr_panelu(96,16);
-     predkosc_obliczona = -100 * predkosc; 
      opoznienie = odpytaj_parametr_panelu(96,32);
      
      //przyspieszanie
-     //delta_write_param(0x05, 0x07, przyspiesznie);      //zapis do tasmociagu lancuchowego
-     //delay_ms(2000);
-     
+     delta_write_param(0x05, 0x07, przyspiesznie);      //zapis do tasmociagu lancuchowego
+     delay_ms(2000);
      //predkosc
-     
-     delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
-     delay_ms(1000);
-     
+     delta_write_param(0x05, 0x07, predkosc);      //zapis do tasmociagu lancuchowego
+     delay_ms(2000);
      //opoznienie
-     //delta_write_param(0x05, 0x07, opoznienie);      //zapis do tasmociagu lancuchowego
-     //delay_ms(2000);
+     delta_write_param(0x05, 0x07, opoznienie);      //zapis do tasmociagu lancuchowego
+     delay_ms(2000);
      
      
      komunikacja_startowa_male_puchary(wynik_wyboru_male_puchary);
@@ -4831,7 +4722,7 @@ switch(proces[0])
             
             //dekatywuj_czujniki_gdy_wiezyczka_stoi();
             
-            if(sprawdz_pin2(PORTHH,0x73) == 0 && sprawdz_pin3(PORTHH,0x73) == 0)  //widzi preta      
+            if(sprawdz_pin2(PORTHH,0x73) == 0 & sprawdz_pin3(PORTHH,0x73) == 0)  //widzi preta      
                 {
                 sek0_7s = 0;
                 sek0 = 0;       
@@ -4841,11 +4732,8 @@ switch(proces[0])
                 }
             else
                 {
-                if(sek0 > 20)
-                    {
-                    komunikat_4_na_panel();
-                    sek0 = 0;
-                    }
+                komunikat_4_na_panel();
+                
                 }
     break;
         
@@ -4887,14 +4775,14 @@ switch(proces[0])
     break;
     
     case 6:
-            if(sprawdz_pin2(PORTHH,0x73) == 0 && sprawdz_pin3(PORTHH,0x73) == 1)    //       
+            if(sprawdz_pin2(PORTHH,0x73) == 0 & sprawdz_pin3(PORTHH,0x73) == 1)    //       
                 {
                 //proces[0] = 3;
                 proces[0] = 1;
                 sek0 = 21;
                 }
                 
-            if(sprawdz_pin2(PORTHH,0x73) == 1 && sprawdz_pin3(PORTHH,0x73) == 0)       
+            if(sprawdz_pin2(PORTHH,0x73) == 1 & sprawdz_pin3(PORTHH,0x73) == 0)       
                 {
                 //proces[0] = 3;
                 proces[0] = 1;
@@ -4907,7 +4795,7 @@ switch(proces[0])
                 sek0 = 21;
                 }    
                     
-            if(sprawdz_pin2(PORTHH,0x73) == 1 && sprawdz_pin3(PORTHH,0x73) == 1)   // 
+            if(sprawdz_pin2(PORTHH,0x73) == 1 & sprawdz_pin3(PORTHH,0x73) == 1)   // 
                 {
                 proces[0] = 7;
                 }    
@@ -5274,7 +5162,7 @@ switch(proces[3])
             sek3 = 0;
             PORTC.4 = 0;     //bramka grzybkow w gore
             odpytaj_dlugosc_preta();
-            if(dlugosc_preta_gwintowanego < 70 || wiezyczka_prozniowa_global == 1)
+            if(dlugosc_preta_gwintowanego < 70)
                   {
                   PORTE.3 = 1;
                   PORTE.4 = 1;
@@ -5290,7 +5178,7 @@ switch(proces[3])
             
             if(sek3 > 50)    //80 02.08
                 {
-                if(dlugosc_preta_gwintowanego < 70 || wiezyczka_prozniowa_global == 1)
+                if(dlugosc_preta_gwintowanego < 70)
                   {
                   PORTE.3 = 0;
                   PORTE.4 = 0;
@@ -5301,15 +5189,7 @@ switch(proces[3])
                 //if(dlugosc_preta_gwintowanego != 60)    - nie wiem po co to 15.07.2024
                 //if(sprawdz_pin5(PORTGG,0x71)== 0 && start >= 7)
                 
-                
-                PORT_F.bits.b0 = 0;   //czujniki deaktywacja         
-                PORTF = PORT_F.byte;            
-                
-                
                 PORTB.1 = 1; //si³ownik chwytania lancy
-                
-                
-                
                 
                 //if(start < 7)
                 //    PORTB.1 = 1;    
@@ -5522,7 +5402,6 @@ zerowanie_czasu();
 
 void zerowanie_procesow()
 {
-int wznowienie_pracy_bo_wlozyla_prety = 0;
 int liczenie;
 long int czestosc_komunikacji;
 czestosc_komunikacji = 0;
@@ -5534,7 +5413,8 @@ if(skonczony_proces[0] == 1 & start == 2)
         klej = czekaj_na_klej();
         //klej_slave = czekaj_na_klej_slave();
         klej_slave = 1;
-        if(z == 1 & klej == 1 & klej_slave == 1)
+        kontrola_grzybkow = kontrola_grzyb();  // & kontrola_grzybkow == 1
+        if(z == 1 & klej == 1 & klej_slave == 1 & kontrola_grzybkow == 1)
             {
             przenies_pret_gwintowany();  //chodzi w whilu dopoki nie zrobi
             wyswietl_czas_procesu();
@@ -5551,8 +5431,9 @@ if(skonczony_proces[0] == 1 & skonczony_proces[1] == 1 & start == 4)
         z = czekaj_na_guzik_start();
         klej = czekaj_na_klej();
         //klej_slave = czekaj_na_klej_slave();
-        klej_slave = 1;   
-        if(z == 1 & klej == 1 & klej_slave == 1)
+        klej_slave = 1;
+        kontrola_grzybkow = kontrola_grzyb();   
+        if(z == 1 & klej == 1 & klej_slave == 1 & kontrola_grzybkow == 1)
             {
             przenies_pret_gwintowany();  //chodzi w whilu dopoki nie zrobi
             wyswietl_czas_procesu();
@@ -5570,8 +5451,9 @@ if(skonczony_proces[0] == 1 & skonczony_proces[1] == 1 & skonczony_proces[2] == 
         z = czekaj_na_guzik_start();
         klej = czekaj_na_klej();
         //klej_slave = czekaj_na_klej_slave();
-        klej_slave = 1;   
-        if(z == 1 & klej == 1 & klej_slave == 1)
+        klej_slave = 1;
+        kontrola_grzybkow = kontrola_grzyb();   
+        if(z == 1 & klej == 1 & klej_slave == 1 & kontrola_grzybkow == 1)
             { 
             //ksp = 0;
             przenies_pret_gwintowany();  //chodzi w whilu dopoki nie zrobi
@@ -5592,8 +5474,9 @@ if(skonczony_proces[0] == 1 & skonczony_proces[1] == 1 & skonczony_proces[2] == 
         z = czekaj_na_guzik_start();
         klej = czekaj_na_klej();
         //klej_slave = czekaj_na_klej_slave();
-        klej_slave = 1;                             
-        if(monterzy_skonczyli == 1 & z == 1 & klej == 1 & klej_slave == 1)
+        klej_slave = 1;
+        kontrola_grzybkow = kontrola_grzyb();                             
+        if(monterzy_skonczyli == 1 & z == 1 & klej == 1 & klej_slave == 1 & kontrola_grzybkow == 1)
             {
             monter_slave = 0;
             czestosc_komunikacji = 0;
@@ -5626,52 +5509,10 @@ if(skonczony_proces[0] == 1 & skonczony_proces[1] == 1 & skonczony_proces[2] == 
                 
                 
              
-            przenies_pret_gwintowany();  //chodzi w whilu dopoki nie zrobi
+                przenies_pret_gwintowany();  //chodzi w whilu dopoki nie zrobi
                                           //nie dawca zezwolenia na szczeki
                              
-            
-            
-            
-            if(il_pretow_gwintowanych == 3)
-            {
-            tryb_kontynuacji = odpytaj_parametr_panelu(16,128);  //nowe
-            if(tryb_kontynuacji == 0)  //jest na odwrot w panelu
-                {
-                wylacz_maszyne();
-                komunikat_czysc_na_panel();
-                komunikat_23_panel();
-                while(1)
-                    {
-                    orientator_grzybkow();
-                    wznowienie_pracy_bo_wlozyla_prety = odpytaj_parametr_panelu(0,48);
-                    
-                    putchar(90);  //5A
-                    putchar(165); //A5
-                    putchar(3);//03  //znak dzwiekowy ze jestem
-                    putchar(128);  //80
-                    putchar(2);    //02
-                    putchar(16);   //10
-                    
-                    
-                    if(wznowienie_pracy_bo_wlozyla_prety == 1)
-                        {
-                        dlugosc_preta_gwintowanego = odpytaj_parametr_panelu(0,64);
-                        //il_pretow_gwintowanych = odpytaj_parametr_panelu_duze_liczby(0,112);
-                        il_pretow_gwintowanych = 3 + odpytaj_parametr_panelu(0,112);
-                        il_pretow_gwintowanych_stala = il_pretow_gwintowanych;  
-                        licznik_pucharow = 1;
-                        wyswietl_ilosc_zmontowanych_pucharow(licznik_pucharow,licznik_pucharow_global);
-                        komunikat_czysc_na_panel();
-                        break;
-                        }
-                    }
-                }
-            }
-            
-            
-            
             odpytaj_parametry_z_panelu(0);       //jak il_pretow == 4
-           
             if(anuluj_biezace_zlecenie == 1 & anuluj_biezace_zlecenie_const == 0)
                 {
                 anuluj_biezace_zlecenie = 0;
@@ -5695,9 +5536,8 @@ if(skonczony_proces[0] == 1 & skonczony_proces[1] == 1 & skonczony_proces[2] == 
                 skonczony_proces[2] = 0;
                 skonczony_proces[3] = 0;
                 }
-        
-                     
-             if(il_pretow_gwintowanych > 2)////////chyba tu zmieniac 26.03.2026
+            
+             if(il_pretow_gwintowanych > 2)
                 {
                 jest_pret_pod_czujnikami = 1;//bo procesu 0 juz nie ma
                 skonczony_proces[1] = 0;
@@ -5872,6 +5712,7 @@ if(start == 0)
             skonczony_proces[1] = 0;
             skonczony_proces[2] = 0;
             skonczony_proces[3] = 0;
+            licznik_pucharow = 0;
             komunikat_czysc_na_panel();
             PORTA.4 = 0; //wylacz orientatorchy gdyby chodzil
             anuluj_biezace_zlecenie_const = 0;
@@ -6074,14 +5915,33 @@ UBRR0L=0x67;
 //UBRR0L=0x08;
 
 
+// --- Inicjalizacja UART1 ---
+// RS485 piny jako wyjœcia
+/*
+RS485_DIR_DDR |= (1<<PIN_DE) | (1<<PIN_RE);
+RS485_RX_MODE();
+
 UBRR1H = (unsigned char)(MYUBRR >> 8);
 UBRR1L = (unsigned char)(MYUBRR);
 
+// TX + RX enable
 UCSR1B = (1<<TXEN1) | (1<<RXEN1);
-UCSR1C = (1 << USBS1) | (1 << UCSZ11) | (1 << UCSZ10);
 
+// 8-E-1
+//UCSR1C = (1<<UPM11) | (1<<UCSZ11) | (1<<UCSZ10);
+UCSR1C = (1 << UCSZ11) | (1 << UCSZ10);
+
+// skasuj flagê TXC1
 UCSR1A |= (1<<TXC1);
+*/
 
+UBRR1H = (unsigned char)(MYUBRR >> 8);
+    UBRR1L = (unsigned char)(MYUBRR);
+
+    UCSR1B = (1<<TXEN1) | (1<<RXEN1);
+    UCSR1C = (1 << USBS1) | (1 << UCSZ11) | (1 << UCSZ10);
+
+    UCSR1A |= (1<<TXC1);
 
 
 // Analog Comparator initialization
@@ -6105,16 +5965,22 @@ TWCR=0x00;
 //////////////////////////
 
 
-//while (1)
-//    {
+while (1)
+    {
+        //delta_write_param(0x05, 0x07, 1000);
+
+        //delta_write_param(0x05, 0x00, 0);
+
+        delta_write_param(0x07, 0x06, -5000);
+        delay_ms(1000);
+        /*
+        if (delta_read_param(0x00C0 >> 8, 0x00C0 & 0xFF, &val))
+        {
+            // val zawiera odczytan¹ wartoœæ
+        } 
+        */
         
- //       delta_write_param(0x07, 0x06, -5000);
-  //      delay_ms(1000);
-        
-        
-  
-        
-  //  }
+    }
 //////////////////////////
 
 

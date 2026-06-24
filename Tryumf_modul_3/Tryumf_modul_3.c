@@ -2209,77 +2209,17 @@ TWCR=0x00;
 //BEZ WYSWIETLACZ
 
 //WE
-//PINA.0    czujnik widzenia nakrêtki
-//PINA.1    uszkodzonie na karcie - Pan Bogdan zwar³
-//PINA.2    czujnik widzenia kamienia
-//PINA.3    sygnal odpytania od procesora glownego    
-//PINA.4    czujnik do silownika kolejkujacego nakretki - lampka nie chodzi   
-//PINA.5    czujnik czy jest klej 
-//PINA.6    czujnik czy jest gotowy do pracy dozownik kleju
-//PINA.7    pedal montera 3 - informacja ze zwolnil zacisk grzybka i jednoczesnie ze nakretka pobrana
-
-//PINF.0    uszkodzone
-//PINF.1    uszkodzona karta
-//PINF.2    
-//PINF.3    
-//PINF.4    czujnik dolny nakretek ten cienki magnetyczny
-//PINF.5    ze MAster dal zgode na zacisniecie szczek
-//PINF.6    do komunikacji z male puchary - NOWY KABEL
-//PINF.7    do komunikacji z male puchary sygnal przecinka - NOWY KABEL
-
+//IN2A
 //PINE.0    czujnik 1 indukcyjnych pozycjonujacey wieze
 //PINE.1    czujnik 1 indukcyjnych pozycjonujacey wieze
 //PINE.2    peda³ 2
-//PINE.3    czujnik na silowniku otwierania wiezyczki tym nowym
-
-//WNIOSKI:
-//C ZMIENIC NA F
-//DO C PODPIAC NOWA WYSPE
-//DO E PODPISAC KARTE 4 + SILNIK KROK
-
+//PINE.3    czujnik na silowniku otwierania wiezyczki tym nowym - chyba juz wolne
 
 //WY
-//PORTB.0   orientator nakretek
-//PORTB.1   za³¹czenie 220V na dozownik kleju  
-//PORTB.2      
-//PORTB.3   psikanie
-//PORTB.4   cisnienia na dozownik kleju
-//PORTB.5   
-//PORTB.6   SYGAN POTWIERDZENIA DO MASTER
-//PORTB.7   podawanie kleju
-
-//PORTD.0 
-//PORTD.1  
-//PORTD.2   silownik podawania kleju
-//PORTD.3   silownik otwierania lancy
-//PORTD.4   silownik wykonujacy drgania
-//PORTD.5   silownik kolejkujacy nakrêtki na zjezdzalni  
-//PORTD.6   tacka pobierajaca nakretki
-//PORTD.7   chwytanie kamienia   
-            
-
-//PORTC.0   // silownik obrotowy os pionowa
-//PORTC.1  //silownik obrotowy os pozioma w gore czyli nie ma kolizji
-//PORTC.2  //zamykanie wiezyczki 1   
-//PORTC.3  //zamykanie wiezyczki 2
-//PORTC.4  
-//PORTC.5
-//PORTC.6
-//PORTC.7  //zamykanie wiezyczki 2
-
-//WPROWADZAM MODYFIKACJE POD MALE PUCHARY
 //PORTE.4 - DIR du¿y silnik
 //PORTE.5 - CLK
 //PORTE.7 - enable (1 uruchamia)
 
-//PROCESY
-//proces_0 - podawanie nakretki monterowi
-//proces_1 - chwytanie kamienia
-
-
-//////////////////////////////////////////
-////obsluga_startowa_dozownika_kleju();    //wywalam bo modul male puchary
-//////////////////////////////////////////
 
 /*
 delay_ms(2000);

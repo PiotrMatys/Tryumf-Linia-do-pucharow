@@ -51,7 +51,6 @@ int zezwolenie_na_zacisniecie_szczek_od_master;
 int zacisnalem_szczeki;
 int jest_nakretka_przy_dolnym;
 int wlaczam_dodatkowe_wibracje_i_psikanie;
-long int licznik_drgania;
 int wystarczy_zejscia;
 int licznik_widzenia_nakretki;
 int ilosc_prob_wybicia_zakretki_do_gory;
@@ -109,19 +108,20 @@ return r;
 }
 
 
-void drgania()
+void komunikacja_z_modulem_4_prowadzenia_kamienia(int x,int y,int z, int g)
 {
-licznik_drgania++;
-if(licznik_drgania == 6000)  //6666
-    PORTD.4 = 1;
-if(licznik_drgania == 12000)//26666
-    {
-    PORTD.4 = 0;
-    licznik_drgania = 0;
-    }
+PORTB.1 = x;
+PORTB.2 = y;
+PORTB.7 = z;
+PORTD.0 = g;
+
+
+
+        //PORTB.1  //komunikacja z modulem 4 prowadzenia kamienia do D.4
+        //PORTB.2  //komunikacja z modulem 4 prowadzenia kamienia do D.5
+        //PORTB.7  //komunikacja z modulem 4 prowadzenia kamienia do D.6
+        //PORTD.0  //komunikacja z modulem 4 prowadzenia kamienia do D.7 
 }
-
-
 
 
 void obsluga_startowa_dozownika_kleju()
@@ -334,7 +334,6 @@ void kontrola_czujnika_dolnego_nakretek()
 if(PINF.4 == 0)
     {
     PORTD.5 = 1;
-    PORTB.5 = 1;  //drgania wibracyjne
     PORTD.6 = 0;  //silownik podaje nakretke monterowi
     }
 else
@@ -687,8 +686,8 @@ switch(proces[0])
                 ilosc_prob_wybicia_zakretki_do_gory = 0;
                 PORTD.5 = 1;  //silownik kolejkujacy nakretki otworz
                 PORTB.3 = 1;  //psikanie
+                PORTB.4 = 1;  //psikanie nr.2
                 PORTB.5 = 1;  //wibrator nowy
-                PORTD.4 = 1;  //zeby na pewno byl wysuniety wstepnie ten co robi drgania
                 sek0 = 0;       
                 proces[0] = 2;
                 }    
@@ -696,8 +695,8 @@ switch(proces[0])
     
     case 1:                          //zeby wrocila karetka nakretek sek0 > 40
             
-            if(podaj_nakretke == 1)
-                PORTB.5 = 1;  //wibrator nowy        
+            //if(podaj_nakretke == 1)
+            //    PORTB.5 = 1;  //wibrator nowy        
     
             if(podaj_nakretke == 1 & sek0 > 40)
                 {
@@ -705,7 +704,7 @@ switch(proces[0])
                 PORTD.5 = 1;  //silownik kolejkujacy nakretki otworz
                 PORTB.5 = 1;  //wibrator nowy
                 PORTB.3 = 1;  //psikanie
-                PORTD.4 = 1;  //zeby na pewno byl wysuniety wstepnie ten co robi drgania
+                PORTB.4 = 1;  //psikanie nr.2
                 sek0 = 0;       
                 proces[0] = 2;
                 }    
@@ -721,11 +720,13 @@ switch(proces[0])
     break;
     
     case 3:  
-            drgania();
+            
             
             if(sek0 > 5 & PORTB.3 == 1)
+                 {
                  PORTB.3 = 0; //psikanie
-            
+                 PORTB.4 = 0; //psikanie nr.2
+                 }
             if(sek0 > 20)  //silownik kolejkujacy nakretki w dol  //35
                 {
                 PORTB.5 = 0;  //wibrator nowy
@@ -740,7 +741,7 @@ switch(proces[0])
             
             if(PINA.4 == 0)
                 wystarczy_zejscia = 1;
-            drgania(); 
+     
             if(sek0 > 25)   
                 {
                 sek0 = 0;
@@ -757,7 +758,6 @@ switch(proces[0])
                 {
                 //proces[0] = 8;
                 //PORTD.2 = 0; //przysun igle z klejem nie dawaj igly z klejem
-                PORTD.4 = 0;  //zeby na pewno byl schowany ten co robi drgania
                 wystarczy_zejscia = 0;
                 proces[0] = 10;
                 sek0 = 50;
@@ -770,12 +770,12 @@ switch(proces[0])
                     {
                     proces[0] = 10;
                     ilosc_prob_wybicia_zakretki_do_gory = 0;
-                    PORTD.4 = 0;  //zeby na pewno byl schowany ten co robi drgania
                     }
                 else
                     {
                     PORTD.5 = 1;  //do gory silownik otworz
                     PORTB.3 = 1;   //psikanie
+                    PORTB.4 = 1;    //psikanie nr.2
                     PORTB.5 = 1;  //wibrator nowy
                     proces[0] = 6;
                     }
@@ -785,11 +785,12 @@ switch(proces[0])
     break;
 
     case 6:
-            drgania();
+            
             
             if(sek0 > 130 & PORTB.3 == 1)
                  {
                  PORTB.3 = 0; //psikanie
+                 PORTB.4 = 0;   //psikanie nr.2
                  PORTB.5 = 0;  //wibrator nowy
                  }
             if(sek0 > 150)  //czekaj na pukniecie
@@ -801,7 +802,7 @@ switch(proces[0])
     break;
 
     case 7:
-            drgania();
+            
             if(PINA.4 == 0)
                 wystarczy_zejscia = 1;
             if(sek0 > 80)  
@@ -854,7 +855,7 @@ switch(proces[0])
                 if(wcisnalem_pedal == 1)  
                    {
                    PORTD.6 = 0;  //cofnij podajnik nakretek 
-                   PORTB.5 = 1;  //wibrator
+                   //PORTB.5 = 1;  //wibrator
                    sek0 = 0;
                    proces[0] = 12;
                    }
@@ -870,7 +871,7 @@ switch(proces[0])
                    {
                    PORTD.5 = 0;   //zamknij przegrode nakretek
                    PORTD.6 = 0;  //cofnij podajnik nakretek 
-                   PORTB.5 = 1;  //wibrator
+                   //PORTB.5 = 1;  //wibrator
                    sek0 = 0;
                    }           
                 }
@@ -927,6 +928,7 @@ switch(proces[1])
             if(PINA.2 == 0 & wcisniete_zakonczone == 2) //widzi kamien
             {
             sek1 = 0;       
+            PORTC.4 = 0; //zgoda na zacisniecie lapek ciezki kamien - cofni czyli brak zgody
             proces[1] = 2;    
             }
     break;
@@ -951,6 +953,10 @@ switch(proces[1])
             if(sek1 > 0) ////////////////////////dam tu wiecej 20, 28.11.2017
                 {
                 PORTD.7 = 1;
+                if(PINE.2 == 0 && PINE.3 == 0) //jest lufa prozniowa i czujnik pokazuje ze lufa schowana
+                    {
+                    PORTD.4 = 1; //wylacz proznie
+                    }
                 sek1 = 0;       
                 proces[1] = 5;
                 }            
@@ -963,7 +969,8 @@ switch(proces[1])
                 if(PINA.7 == 1 & proces[0] == 11) //monter nacisnal pedal
                     {                
                     PORTD.3 = 1;  //zluzuj chwyt grzybka
-                    PORTD.7 = 0; //pusc kamien
+                    PORTD.7 = 0; //pusc kamien 
+                    PORTC.4 = 1;    //sygnal do ciezkiego kamienia ze mozna zamknac szczeki
                     wcisnalem_pedal = 1;   
                     sek1 = 0;
                     proces[1] = 6;
@@ -993,6 +1000,10 @@ switch(proces[1])
             if(sek1 > 30) //20 31.07.2017
                {
                PORTD.3 = 0;  //zacisnij z powrotem szczeki
+               
+               PORTD.4 = 0; //wlacz proznie z powrotem
+               
+               PORTC.4 = 0;    //sygnal do ciezkiego kamienia ze mozna zamknac szczeki              
                proces[1] = 8;
                } 
     break;
@@ -1768,10 +1779,130 @@ if(PINF.7 == 1 & przeslano_informacje_male_puchary == 1)
               PORTE.2 = 0;
               PORTE.3 = 0;
               PORTE.4 = 0;
-              PORTE.5 = 0;
+              PORTE.5 = 0;    
+              //wielkosc_kamienia_duzego = 125
+              komunikacja_z_modulem_4_prowadzenia_kamienia(0,0,0,0);
            
               
         break;
+        
+         //16 przypadkow
+        //nowe_07_01_2024
+        case 4:
+        //wielkosc_kamienia_duzego = 120
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;    
+        
+        
+        
+        komunikacja_z_modulem_4_prowadzenia_kamienia(0,0,0,1);
+        //PORTB.1  //komunikacja z modulem 4 prowadzenia kamienia
+        //PORTB.2  //komunikacja z modulem 4 prowadzenia kamienia
+        //PORTB.7  //komunikacja z modulem 4 prowadzenia kamienia
+        //PORTD.0  //komunikacja z modulem 4 prowadzenia kamienia  
+        
+        
+        break;
+        
+        case 5:
+        //wielkosc_kamienia_duzego = 115
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;    
+        komunikacja_z_modulem_4_prowadzenia_kamienia(0,0,1,0);
+        
+        break;
+        
+        case 6:
+        //wielkosc_kamienia_duzego = 110
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0; 
+         komunikacja_z_modulem_4_prowadzenia_kamienia(0,0,1,1);   
+        
+        break;
+        
+        case 7:
+        //wielkosc_kamienia_duzego = 105
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;    
+        
+        komunikacja_z_modulem_4_prowadzenia_kamienia(0,1,0,0);
+        
+        break;
+        
+        case 8:
+        //wielkosc_kamienia_duzego = 100
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;  
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(0,1,0,1);   
+        
+        break;
+        
+        case 9:
+        //wielkosc_kamienia_duzego = 95
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;     
+         
+        komunikacja_z_modulem_4_prowadzenia_kamienia(0,1,1,0);
+        
+        break;
+        
+        
+        
         
         case 11:
              tryb_male_puchary = 2;
@@ -1958,6 +2089,167 @@ if(PINF.7 == 1 & przeslano_informacje_male_puchary == 1)
              licznik_impulsow_male_puchary = 0;
              przeslano_informacje_male_puchary = 0;     
         break;
+        
+        case 24:
+        //wielkosc_kamienia_duzego = 90
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;                                   
+              PORTE.5 = 0;    
+        komunikacja_z_modulem_4_prowadzenia_kamienia(0,1,1,1);
+        
+        break;
+        
+        case 25:
+        //wielkosc_kamienia_duzego = 85
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;    
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,0,0,0);
+        
+        break; 
+        
+        case 26:
+        //wielkosc_kamienia_duzego = 80
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;                                    
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,0,0,1);
+        
+        break;
+          
+        
+         case 27:
+        //wielkosc_kamienia_duzego = 75
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;                                    
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,0,1,0);
+        
+        break; 
+        
+         case 28:
+        //wielkosc_kamienia_duzego = 70
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;                                    
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,0,1,1);
+        
+        break; 
+        
+         case 29:
+        //wielkosc_kamienia_duzego = 65
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;                                    
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,1,0,0);
+        
+        break; 
+        
+         case 30:
+        //wielkosc_kamienia_duzego = 60
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;                                    
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,1,0,1);
+        
+        break; 
+        
+        
+         case 31:
+        //wielkosc_kamienia_duzego = 55
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;                                    
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,1,1,0);
+        
+        break; 
+        
+        case 32:
+        //wielkosc_kamienia_duzego = 50
+        
+         tryb_male_puchary = 3;   //ze nie bedzie malych malych pucharow
+              licznik_impulsow_male_puchary = 0;
+              przeslano_informacje_male_puchary = 0;
+              podaj_nakretke = 1;
+              PORTE.0 = 0;
+              PORTE.1 = 0;
+              PORTE.2 = 0;
+              PORTE.3 = 0;
+              PORTE.4 = 0;
+              PORTE.5 = 0;                                    
+              
+        komunikacja_z_modulem_4_prowadzenia_kamienia(1,1,1,1);
+        
+        break; 
         
         
         
@@ -2290,7 +2582,7 @@ TWCR=0x00;
 //PINF.0    uszkodzone
 //PINF.1    uszkodzona karta
 //PINF.2    
-//PINF.3    
+//PINF.3    czujnik na silownik zamykania prozni w wiezyczkach prozniowych
 //PINF.4    czujnik dolny nakretek ten cienki magnetyczny
 //PINF.5    ze MAster dal zgode na zacisniecie szczek
 //PINF.6    do komunikacji z male puchary - NOWY KABEL
@@ -2299,43 +2591,49 @@ TWCR=0x00;
 //PINE.0    czujnik 1 indukcyjnych pozycjonujacey wieze
 //PINE.1    czujnik 1 indukcyjnych pozycjonujacey wieze
 //PINE.2    peda³ 2    //zmieniam na pine.6
-//PINE.3    czujnik na silowniku otwierania wiezyczki tym nowym
+//PINE.3    czujnik na silowniku otwierania wiezyczki prozniowej
+//PINE.2    informacja ze lufy prozniowe
+
 
 //WNIOSKI:
 //C ZMIENIC NA F
 //DO C PODPIAC NOWA WYSPE
 //DO E PODPISAC KARTE 4 + SILNIK KROK
-
+                                                                        
 
 //WY
+//OUT1
 //PORTB.0   orientator nakretek
-//PORTB.1   za³¹czenie 220V na dozownik kleju  
-//PORTB.2      
+//PORTB.1   za³¹czenie 220V na dozownik kleju - juz nie, zmieniam na komunikacja z modulem 4 prowadzenia kamienia /////////////////////////  
+//PORTB.2   //komunikacja z modulem 4 prowadzenia kamienia  ////////////////////////// 
 //PORTB.3   psikanie
-//PORTB.4   cisnienia na dozownik kleju
+//PORTB.4   psikanie nr.2(bylo dawniej dozwonik kleju)
 //PORTB.5   wibrator nowy
 //PORTB.6   SYGAN POTWIERDZENIA DO MASTER
-//PORTB.7   podawanie kleju
+//PORTB.7   podawanie kleju - juz nie, zmieniam na komunikacja z modulem 4 prowadzenia kamienia/////////////////////////////////////////
 
-//PORTD.0 
+
+//OUT2
+//PORTD.0   //komunikacja z modulem 4 prowadzenia kamienia /////////////////////////////////////////////////////
 //PORTD.1  
 //PORTD.2   silownik podawania kleju
 //PORTD.3   silownik otwierania lancy
-//PORTD.4   silownik wykonujacy drgania
+//PORTD.4   silownik zamykajacy proznie
 //PORTD.5   silownik kolejkujacy nakrêtki na zjezdzalni  
 //PORTD.6   tacka pobierajaca nakretki
 //PORTD.7   chwytanie kamienia   
             
-
+//OUT3
 //PORTC.0   // silownik obrotowy os pionowa
 //PORTC.1  //silownik obrotowy os pozioma w gore czyli nie ma kolizji
 //PORTC.2  //zamykanie wiezyczki 1   
 //PORTC.3  //zamykanie wiezyczki 2
-//PORTC.4  
-//PORTC.5
-//PORTC.6
+//PORTC.4  sygnal do ciezkiego kamienia ze mozna juz zamknac szczeki
+//PORTC.5  silownik otwierajacy wieze
+//PORTC.6  stan otwarcia wejsciowy wie¿a 1
 //PORTC.7  //zamykanie wiezyczki 2
 
+//SYGNALY BEZPOSTREDNIO DO PROCECESOR 2
 //WPROWADZAM MODYFIKACJE POD MALE PUCHARY
 //PORTE.4 - DIR du¿y silnik
 //PORTE.5 - CLK
@@ -2350,39 +2648,10 @@ TWCR=0x00;
 ////obsluga_startowa_dozownika_kleju();    //wywalam bo modul male puchary
 //////////////////////////////////////////
 
-/*
-delay_ms(2000);
-delay_ms(2000);
-
-PORTC.2 = 0;  //stan otwart wejsciowy wie¿a 1
-PORTC.3 = 1;  //stan otwarcia wejsciowy wie¿a 2 
-PORTC.7 = 0;  //stan otwarcia wejsciowy wie¿a 2
-//(aby zamknac: PORTC.3 = 0; PORTC.7 = 1;)
-
-PORTC.5 = 0;  //schowaj silownik otwierajacy wieze - ustawienie wstepne
-PORTC.6 = 1;
-delay_ms(2000);
-delay_ms(2000);
-
-
-PORTC.5 = 1;     //wysun silownik
-PORTC.6 = 0;
-
-delay_ms(2000);
-delay_ms(2000);
-PORTC.5 = 0;  //schowaj silownik
-PORTC.6 = 1;
-
-
-delay_ms(2000);
-delay_ms(2000);
-*/
-
-
 PORTC.5 = 0;  //schowaj silownik otwierajacy wieze
 PORTC.6 = 1;
 
-PORTC.3 = 1;  //stan otwarcia wejsciowy wie¿a 2 
+PORTC.3 = 1;  //stan otwarcia wejsciowy wie¿a 1 
 PORTC.7 = 0;  //stan otwarcia wejsciowy wie¿a 2
 
 
@@ -2402,7 +2671,6 @@ zacisnalem_szczeki = 0;
 ff = 0;
 jest_nakretka_przy_dolnym = 0;
 wlaczam_dodatkowe_wibracje_i_psikanie = 0;
-licznik_drgania = 0;
 wystarczy_zejscia = 0;
 licznik_widzenia_nakretki = 0;
 wcisniete_zakonczone = 0;
@@ -2433,7 +2701,38 @@ PORTB.5 = 1;  //wibrator nowy
 delay_ms(1000);
 delay_ms(1000);
 
+
+////////////////////
+while(1)
+{
+PORTD.4 = 0;
+delay_ms(2000);
+PORTD.4 = 1;
+delay_ms(2000);
+}
+///////////////////
+
+
+
+
+
+komunikacja_z_modulem_4_prowadzenia_kamienia(0,0,0,0);
+/////////////////test 18_01_2024
+//komunikacja_z_modulem_4_prowadzenia_kamienia(0,0,0,0);
+
+//while(1)
+//{
+//}
+
+
 //////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
 //wypozucjonuj_wieze_wolno();
 
 //#asm("sei")
@@ -2490,7 +2789,6 @@ while (1)
 //kontrola_czujnika_dolnego_nakretek();
 //kontrola_orientatora_nakretek();
 //obsluga_dozownika_kleju_i_komunikacja();
-//drgania();
 //obsluga_probna_pobierania_nakretek();
 }
 
