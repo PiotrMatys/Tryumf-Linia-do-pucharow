@@ -34,6 +34,7 @@ Data Stack size         : 1024
 
 // --- Konfiguracja Modbus ---
 #define SLAVE_ID 0x01 //127
+#define SLAVE_PI_ID 2     // ID Modbus Raspberry (Delta = 1, Pi = 2)
 #define F_CPU 16000000UL
 #define BAUD 38400
 #define MYUBRR (F_CPU / 16UL / BAUD - 1)
@@ -451,6 +452,33 @@ unsigned char delta_read_param(unsigned char group,
     return 1;
 }
 
+
+// Wysyla wartosc (int32) do rejestru 0 Raspberry (FC16, high_first) -> ekran.
+void wyslij_ilosc_na_wyswietlacz(long int value)
+{
+    unsigned char frame[11];
+    unsigned long u = (unsigned long)value;
+
+    frame[0]  = SLAVE_PI_ID;
+    frame[1]  = 0x10;                 // Write Multiple Registers
+    frame[2]  = 0x00;  frame[3] = 0x00;   // rejestr 0
+    frame[4]  = 0x00;  frame[5] = 0x02;   // 2 rejestry (int32)
+    frame[6]  = 0x04;                     // 4 bajty
+    frame[7]  = (u >> 24) & 0xFF;  frame[8]  = (u >> 16) & 0xFF;   // high word
+    frame[9]  = (u >> 8)  & 0xFF;  frame[10] =  u        & 0xFF;   // low word
+    send_frame(frame, 11);            // send_frame dolicza CRC
+}
+
+// Wysyla tylko, gdy ilosc sie zmienila (minimalny ruch na magistrali).
+int ostatnia_wyslana_ilosc = -1;
+void aktualizuj_wyswietlacz_ilosci(void)
+{
+    if (licznik_pucharow != ostatnia_wyslana_ilosc)
+    {
+        wyslij_ilosc_na_wyswietlacz((long int)licznik_pucharow);
+        ostatnia_wyslana_ilosc = licznik_pucharow;
+    }
+}
 
 
 
@@ -6105,16 +6133,19 @@ TWCR=0x00;
 //////////////////////////
 
 
-//while (1)
-//    {
+while (1)
+    {
         
- //       delta_write_param(0x07, 0x06, -5000);
-  //      delay_ms(1000);
+        delta_write_param(0x07, 0x06, -5000);
+        delay_ms(1000);
+        licznik_pucharow = rand();
+        aktualizuj_wyswietlacz_ilosci();
+        delay_ms(1000);
         
         
   
         
-  //  }
+    }
 //////////////////////////
 
 
@@ -6291,6 +6322,7 @@ gg = 0;
 klej = 0;
 klej_slave = 0;
 monter_slave = 0;
+
 
 
 ///////////////////////////////////////////
