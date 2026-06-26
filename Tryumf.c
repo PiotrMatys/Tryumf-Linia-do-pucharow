@@ -2,7 +2,7 @@
 This program was produced by the
 CodeWizardAVR V2.05.0 Professional
 Automatic Program Generator
-© Copyright 1998-2010 Pavel Haiduc, HP InfoTech s.r.l.
+ï¿½ Copyright 1998-2010 Pavel Haiduc, HP InfoTech s.r.l.
 http://www.hpinfotech.com
 
 Project : 
@@ -348,6 +348,139 @@ void UART1_send(unsigned char data)
     UDR1 = data;
 }
 
+// ============================================================
+//   TELEMETRIA do Raspberry (async, NIE blokuje petli glownej)
+// ============================================================
+#define EVENT_MBX 200        // adres skrzynki zdarzen na Pi (= event_mailbox_addr)
+
+// --- znacznik czasu: licznik tickow (1 tick = 16,384 ms, NIE zerowac) ---
+volatile unsigned long mono_ticks = 0;     // inkrementowany w ISR Timer0
+
+unsigned long czytaj_ticks(void)
+{
+    unsigned long t;
+    unsigned char s = SREG;
+    #asm("cli")
+    t = mono_ticks;
+    SREG = s;
+    return t;
+}
+
+// --- bufor TX asynchronicznego (oprozniany przez przerwanie USART1_DRE) ---
+#define TX_BUF_ROZMIAR 64                  // potega 2
+volatile unsigned char txa_buf[TX_BUF_ROZMIAR];
+volatile unsigned char txa_glowa = 0;      // zapis (petla glowna)
+volatile unsigned char txa_ogon  = 0;      // odczyt (ISR)
+
+interrupt [USART1_DRE] void usart1_dre_isr(void)
+{
+    if (txa_glowa != txa_ogon) {
+        UDR1 = txa_buf[txa_ogon];
+        txa_ogon = (txa_ogon + 1) & (TX_BUF_ROZMIAR - 1);
+    } else {
+        UCSR1B &= ~(1<<UDRIE1);            // pusto -> wylacz przerwanie
+    }
+}
+
+unsigned char txa_wolne(void)
+{
+    return (TX_BUF_ROZMIAR - 1) - ((txa_glowa - txa_ogon) & (TX_BUF_ROZMIAR - 1));
+}
+
+// Wrzuca ramke zdarzenia + CRC do bufora async. NIE blokuje. 1=ok, 0=brak miejsca.
+unsigned char wyslij_zdarzenie_async(unsigned int id, unsigned int value, unsigned long ts)
+{
+    unsigned char frame[15];
+    unsigned int  crc;
+    unsigned char i, s;
+
+    if (txa_wolne() < 17) return 0;        // 15 + 2 CRC
+    frame[0]=SLAVE_PI_ID; frame[1]=0x10;
+    frame[2]=(EVENT_MBX>>8)&0xFF; frame[3]=EVENT_MBX&0xFF;
+    frame[4]=0x00; frame[5]=0x04; frame[6]=0x08;
+    frame[7]=(id>>8)&0xFF;    frame[8]=id&0xFF;
+    frame[9]=(value>>8)&0xFF; frame[10]=value&0xFF;
+    frame[11]=(ts>>24)&0xFF;  frame[12]=(ts>>16)&0xFF;
+    frame[13]=(ts>>8)&0xFF;   frame[14]=ts&0xFF;
+    crc = modbus_crc(frame, 15);
+    for (i = 0; i < 15; i++) {
+        txa_buf[txa_glowa] = frame[i];
+        txa_glowa = (txa_glowa + 1) & (TX_BUF_ROZMIAR - 1);
+    }
+    txa_buf[txa_glowa] = crc & 0xFF; txa_glowa = (txa_glowa + 1) & (TX_BUF_ROZMIAR - 1);
+    txa_buf[txa_glowa] = crc >> 8;   txa_glowa = (txa_glowa + 1) & (TX_BUF_ROZMIAR - 1);
+    s = SREG;
+    #asm("cli")
+    UCSR1B |= (1<<UDRIE1);             // start nadawania w tle
+    SREG = s;
+    return 1;
+}
+
+// Wola send_frame PRZED ramka blokujaca: czeka az async TX skonczy, by go nie
+// przerwac. Gdy nic nie czeka -> wychodzi natychmiast (zero kosztu).
+void czekaj_na_async_tx(void)
+{
+    if (txa_glowa == txa_ogon) return;
+    while (txa_glowa != txa_ogon);
+    while (!(UCSR1A & (1<<TXC1)));
+    delay_us(1000);                    // odstep RTU przed ramka blokujaca
+}
+
+// Envoi immediat (non bloquant).
+unsigned char wyslij(unsigned int id, unsigned int value)
+{
+    return wyslij_zdarzenie_async(id, value, czytaj_ticks());
+}
+
+// --- lista zdarzen: {id, value, ts} ---
+typedef struct { unsigned int id; unsigned int value; unsigned long ts; } zdarzenie_t;
+#define LISTA_ROZMIAR 64
+zdarzenie_t   lista[LISTA_ROZMIAR];
+unsigned char lista_glowa = 0, lista_ogon = 0, lista_ile = 0;
+
+unsigned char dodaj_do_listy(unsigned int id, unsigned int value)
+{
+    if (lista_ile >= LISTA_ROZMIAR) return 0;
+    lista[lista_glowa].id    = id;
+    lista[lista_glowa].value = value;
+    lista[lista_glowa].ts    = czytaj_ticks();   // znacznik w chwili dodania
+    lista_glowa = (lista_glowa + 1) & (LISTA_ROZMIAR - 1);
+    lista_ile++;
+    return 1;
+}
+
+// Wysyla liste NIEBLOKUJACO: tyle ile zmiesci sie w buforze TX, reszta pozniej.
+void wyslij_liste(void)
+{
+    while (lista_ile > 0) {
+        if (!wyslij_zdarzenie_async(lista[lista_ogon].id,
+                                    lista[lista_ogon].value,
+                                    lista[lista_ogon].ts))
+            break;
+        lista_ogon = (lista_ogon + 1) & (LISTA_ROZMIAR - 1);
+        lista_ile--;
+    }
+}
+
+// Dodaje do listy tylko gdy wartosc sie zmienila.
+int mon_ostatnie[120];
+void dodaj_jesli_zmiana(unsigned int id, int value)
+{
+    if (id < 120 && mon_ostatnie[id] != value) {
+        mon_ostatnie[id] = value;
+        dodaj_do_listy(id, (unsigned int)value);
+    }
+}
+
+// ====== TU WYBIERASZ CO MONITOROWAC (id wg REGISTER_MAP.md) ======
+void monitoruj_do_listy(void)
+{
+    dodaj_jesli_zmiana(10, sprawdz_pin0(PORTHH,0x73));   // czujnik_cisnienia
+    dodaj_jesli_zmiana(40, PORTB.0);                     // przyklad: silownik
+    dodaj_jesli_zmiana(100, licznik_pucharow);           // ilosc
+    // ... dodaj wg potrzeb
+}
+
  unsigned char UART1_recv(unsigned char *data, unsigned int ms)
 
 {
@@ -377,18 +510,19 @@ void UART1_send(unsigned char data)
 
 } 
 
-// --- Envoyer trame (Version Spéciale Automatique) ---
+// --- Envoyer trame (Version Spï¿½ciale Automatique) ---
 void send_frame(unsigned char *frame, int len)
 {
     unsigned int crc;
     int i;
 
+    czekaj_na_async_tx();   // DODANE: nie zaczynaj ramki blokujacej w trakcie async TX
     crc = modbus_crc(frame, len);
 
     // IMPORTANT : On vide le flag TXC1 avant de commencer
     UCSR1A |= (1<<TXC1);
 
-    // Envoi des données (Pas de RS485_TX_MODE ici !)
+    // Envoi des donnï¿½es (Pas de RS485_TX_MODE ici !)
     for (i = 0; i < len; i++)
         UART1_send(frame[i]);
 
@@ -397,7 +531,7 @@ void send_frame(unsigned char *frame, int len)
     UART1_send(crc >> 8);
 
     // ATTENTE CRUCIALE : on attend que le dernier bit soit sorti
-    // pour que l'adaptateur automatique puisse repasser en réception
+    // pour que l'adaptateur automatique puisse repasser en rï¿½ception
     while (!(UCSR1A & (1<<TXC1)));
 }
 
@@ -517,6 +651,7 @@ sek3++;
 sek4++;  //do nowego przenoszenia tasmociagu lanuchowego
 sek5++;  //do orientatora grzybkow 
 
+mono_ticks++;     // DODANE: znacznik czasu telemetrii (1 tick = 16,384 ms)
 msek_clock++;
 if(msek_clock == 60)
      {
@@ -1049,19 +1184,19 @@ void przeslij_parametry_do_slave(char pomocnicza,char numer)
 
 int spr;
 
-PORTE.7 = 1;//do komunikacji ¿adanie
+PORTE.7 = 1;//do komunikacji ï¿½adanie
 putchar1(numer);  
 putchar1(pomocnicza);
 spr = getchar1();
 if(spr == 3)
-    PORTE.7 = 0;//do komunikacji koniec ¿adania
+    PORTE.7 = 0;//do komunikacji koniec ï¿½adania
 else
     {
     if(numer == 3)
         komunikat_18_na_panel();  //nie potwierdzil podania nakretki
     if(numer == 5)
         komunikat_19_na_panel();  //nie potwierdzil zezwolenia na szczeki
-    PORTE.7 = 0;//do komunikacji koniec ¿adania    
+    PORTE.7 = 0;//do komunikacji koniec ï¿½adania    
     }
 }
 
@@ -1994,9 +2129,9 @@ int pusc_pierwszego_preta()
 int wynik;
 wynik = 0;
 
-//PORTC.5   si³ownik 3 kolejkuj¹cy na rynnie
-//PORTC.6   si³ownik 2 kolejkuj¹cy na rynnie  //na pewno podupcona kolejnoœæ
-//PORTC.7   si³ownik 1 kolejkuj¹cy na rynnie
+//PORTC.5   siï¿½ownik 3 kolejkujï¿½cy na rynnie
+//PORTC.6   siï¿½ownik 2 kolejkujï¿½cy na rynnie  //na pewno podupcona kolejnoï¿½ï¿½
+//PORTC.7   siï¿½ownik 1 kolejkujï¿½cy na rynnie
 
 switch(proces[0])
     {
@@ -2090,8 +2225,8 @@ i = 0;
 while(i == 0)
     i = wyczysc_grzebienie();  //przenies raz grzebienie - po tym spada
 
-//dorzucic czujnika indukcyjnego do tej ³apki, która chwyta
-//czyli maszyna ma siê nie uruchomiæ dopoki ktos nie wyczyscil tych precikow
+//dorzucic czujnika indukcyjnego do tej ï¿½apki, ktï¿½ra chwyta
+//czyli maszyna ma siï¿½ nie uruchomiï¿½ dopoki ktos nie wyczyscil tych precikow
 //JEZELI SA PRETY TO KOMUNIKAT - ZABIERZ PRETY
 
 //po tym sprawdzeniu nastepuje komunikat:
@@ -2437,7 +2572,7 @@ while(zwrot == 1 | zwrot == 2 | zwrot == 3 | zwrot == 4 | sekwencja == 0 | sekwe
                         if((rozpoczalem_ruch_preta == 1 & start >=8 & time1 > 2000) | (start < 8 & time1 > 1000))                
                             {                                                //20000 10.10.2025          //3000 10.10.2025
                             if(start < 8)
-                                PORTB.5 = 1;  //si³ownik ma³y chwytania prêcika - chwycenie
+                                PORTB.5 = 1;  //siï¿½ownik maï¿½y chwytania prï¿½cika - chwycenie
                             zwrot = 2;
                             time1 = 0;
                             }
@@ -2446,7 +2581,7 @@ while(zwrot == 1 | zwrot == 2 | zwrot == 3 | zwrot == 4 | sekwencja == 0 | sekwe
                         //if((sprawdz_pin5(PORTHH,0x73) == 0 & start < 8) | (sprawdz_pin5(PORTHH,0x73) == 1 & start >= 8)) //kontrola ok - wywalam kontrolwe 14.09 bo koliduje jak sie zapetli nakretka
                         if((sprawdz_pin5(PORTHH,0x73) == 0 & start < 8) | (sprawdz_pin5(PORTHH,0x73) == 1 & start >= 8))
                             {
-                            PORTB.5 = 0; //si³ownik ma³y chwytania prêcika - puszczenie
+                            PORTB.5 = 0; //siï¿½ownik maï¿½y chwytania prï¿½cika - puszczenie
                             PORTB.2 = 0; //wkladanie do lancy precika z grzybkiem - powrot silownikiem
                             PORTB.6 = 0; //silownik obrotowy na ktorym jest maly chwytajacy precik - powrot
                             zwrot = 3;
@@ -2704,7 +2839,7 @@ while(zwrot == 1 | zwrot == 2 | zwrot == 3 | zwrot == 4 | sekwencja == 0 | sekwe
                     {
                     komunikat_czysc_na_panel();
                     PORTE.6 = 0;
-                    //if(time > 6000)      //to bêdzie chyba to......to powoduje jechanie dwa razy...zmieniam to na 6000..bylo 60000  12.20.2017 
+                    //if(time > 6000)      //to bï¿½dzie chyba to......to powoduje jechanie dwa razy...zmieniam to na 6000..bylo 60000  12.20.2017 
                     if(time > 60) //10.10.2025
                         sekwencja = 4;
                     else
@@ -3014,7 +3149,7 @@ while(zwrot == 1 | zwrot == 2 | zwrot == 3 | zwrot == 4 | sekwencja == 0 | sekwe
                         if((rozpoczalem_ruch_preta == 1 & start >=8)  | (start < 8))                
                             {                                                
                             if(start < 8)
-                                PORTB.5 = 1;  //si³ownik ma³y chwytania prêcika - chwycenie
+                                PORTB.5 = 1;  //siï¿½ownik maï¿½y chwytania prï¿½cika - chwycenie
                             zwrot = 2;
                             time1 = 0;
                             }
@@ -3023,7 +3158,7 @@ while(zwrot == 1 | zwrot == 2 | zwrot == 3 | zwrot == 4 | sekwencja == 0 | sekwe
                         
                         if((sprawdz_pin5(PORTHH,0x73) == 0 & start < 8) | (sprawdz_pin5(PORTHH,0x73) == 1 & start >= 8))
                             {
-                            PORTB.5 = 0; //si³ownik ma³y chwytania prêcika - puszczenie
+                            PORTB.5 = 0; //siï¿½ownik maï¿½y chwytania prï¿½cika - puszczenie
                             //PORTB.2 = 0; //wkladanie do lancy precika z grzybkiem - powrot silownikiem
                             //PORTB.6 = 0; //silownik obrotowy na ktorym jest maly chwytajacy precik - powrot
                             zwrot = 3;
@@ -3417,7 +3552,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                         if((rozpoczalem_ruch_preta == 1 && start >=8)  || (start < 8))                
                             {                                                
                             if(start < 8)
-                                PORTB.5 = 1;  //si³ownik ma³y chwytania prêcika - chwycenie
+                                PORTB.5 = 1;  //siï¿½ownik maï¿½y chwytania prï¿½cika - chwycenie
                             zwrot = 2;
                             time1 = 0;
                             }
@@ -3426,7 +3561,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                         
                         if((sprawdz_pin5(PORTHH,0x73) == 0 && start < 8) || (sprawdz_pin5(PORTHH,0x73) == 1 && start >= 8))
                             {
-                            PORTB.5 = 0; //si³ownik ma³y chwytania prêcika - puszczenie
+                            PORTB.5 = 0; //siï¿½ownik maï¿½y chwytania prï¿½cika - puszczenie
                             //PORTB.2 = 0; //wkladanie do lancy precika z grzybkiem - powrot silownikiem
                             //PORTB.6 = 0; //silownik obrotowy na ktorym jest maly chwytajacy precik - powrot
                             zwrot = 3;
@@ -3645,7 +3780,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
            case 3: 
                      
            
-                    if(sek4 > 10)     //dodatkowe 02.17 bo uderza³ w nastepna wiezyczke nie prozniowa
+                    if(sek4 > 10)     //dodatkowe 02.17 bo uderzaï¿½ w nastepna wiezyczke nie prozniowa
                     {
                     PORTB.6 = 0; //silownik obrotowy na ktorym jest maly chwytajacy precik - powrot  08.01.2025
                     PORTB.2 = 0; //wkladanie do lancy precika z grzybkiem - powrot silownikiem 08.01.2025
@@ -4036,8 +4171,8 @@ if(silownik_kolejkujacy_pierwszy == 1)
     // PORTF = PORT_F.byte;
     //PORTC.7 = 1;
     
-    PORTC.2 = 1;   //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-    PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
+    PORTC.2 = 1;   //silownik pobierania grzybow maly - droga DO grzebienie pod ciï¿½nieniem
+    PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciï¿½nieniem
     
     
     
@@ -4048,8 +4183,8 @@ else
     //PORT_F.bits.b5 = 0;   //lanie kleju
     //PORTF = PORT_F.byte;
     
-    PORTC.2 = 0;   //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
+    PORTC.2 = 0;   //silownik pobierania grzybow maly - droga DO grzebienie pod ciï¿½nieniem
+    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciï¿½nieniem
     
     
     
@@ -4560,8 +4695,8 @@ PORTA.0 = 0;  //obrot przez falownik;
 PORTA.5 = 0;  //obrot przez optoprzekaznik;
 PORTC.3 = 0;  //silownik na ktorym jest silnik dokrecajacy grzybki
 PORTC.1 = 0;  //silownik pobierania grzybow duzy
-PORTC.2 = 1;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
+PORTC.2 = 1;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciï¿½nieniem
+PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciï¿½nieniem
 PORTB.7 = 0;   //silownik dociskajacy pret na grzybkach
 
 inicjalizacja_orientator_grzybkow();
@@ -4575,16 +4710,16 @@ odpytaj_parametry_z_panelu(1);
 if(oproznij_podajnik == 1)
     {
     delay_ms(1000);
-    PORTC.2 = 0;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
+    PORTC.2 = 0;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciï¿½nieniem
+    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciï¿½nieniem
     delay_ms(3000);
     PORTC.1 = 1;  //silownik pobierania grzybow duzy - cofamy sie
     delay_ms(3000);
-    PORTC.2 = 1;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-    PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
+    PORTC.2 = 1;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciï¿½nieniem
+    PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciï¿½nieniem
     delay_ms(2000);
-    PORTC.2 = 0;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
-    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem
+    PORTC.2 = 0;  //silownik pobierania grzybow maly - droga DO grzebienie pod ciï¿½nieniem
+    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ciï¿½nieniem
     delay_ms(3000);
     PORTC.1 = 0;  //silownik pobierania grzybow duzy
 
@@ -4679,11 +4814,11 @@ int czekaj_na_odpuszczenie_szczek()
 {
 int spr;
 
-PORTE.7 = 1;//do komunikacji ¿adanie
+PORTE.7 = 1;//do komunikacji ï¿½adanie
 
 //putchar1(4);  //ze dotyczy szczek
 //spr = getchar1();
-//PORTE.7 = 0;//do komunikacji koniec ¿adania
+//PORTE.7 = 0;//do komunikacji koniec ï¿½adania
 
 if(sprawdz_pin1(PORTKK,0x79) == 0)
     spr = 1;
@@ -4726,10 +4861,10 @@ int czekaj_na_widzenie_puchara_przez_czujnik()
 {
 int spr;
 
-PORTE.7 = 1;//do komunikacji ¿adanie
+PORTE.7 = 1;//do komunikacji ï¿½adanie
 putchar1(6);  //ze dotyczy czujnika widzenia puchara
 spr = getchar1();
-PORTE.7 = 0;//do komunikacji koniec ¿adania
+PORTE.7 = 0;//do komunikacji koniec ï¿½adania
 
 if(spr == 0)
   {
@@ -4766,10 +4901,10 @@ int czekaj_na_klej_slave()
 {
 int spr;
 
-PORTE.7 = 1;//do komunikacji ¿adanie
+PORTE.7 = 1;//do komunikacji ï¿½adanie
 putchar1(1);  //ze dotyczy kleju
 spr = getchar1();
-PORTE.7 = 0;//do komunikacji koniec ¿adania
+PORTE.7 = 0;//do komunikacji koniec ï¿½adania
 
 if(spr == 0)
   {
@@ -5334,7 +5469,7 @@ switch(proces[3])
                 PORTF = PORT_F.byte;            
                 
                 
-                PORTB.1 = 1; //si³ownik chwytania lancy
+                PORTB.1 = 1; //siï¿½ownik chwytania lancy
                 
                 
                 
@@ -5380,7 +5515,7 @@ switch(proces[3])
                         {
                         komunikat_czysc_na_panel();
                         oczekiwanie_na_poprawienie = 0;
-                        PORTB.5 = 1; //si³ownik ma³y chwytania prêcika
+                        PORTB.5 = 1; //siï¿½ownik maï¿½y chwytania prï¿½cika
                         }
                     
                     if(dlugosc_preta_gwintowanego == 60 & sprawdz_pin7(PORTHH,0x73) == 0)
@@ -5408,7 +5543,7 @@ switch(proces[3])
             
             if(sek3 > 25 & sprawdz_pin5(PORTHH,0x73) == 1 & PORTB.5 == 1) //nie dojechal do konca czyli jest precik  //50 02.08
                 {
-                //PORTB.1 = 1; //si³ownik chwytania lancy
+                //PORTB.1 = 1; //siï¿½ownik chwytania lancy
                 //PORTB.0 = 1; //otwarcie szczek w lancy - silownik z boku
                 PORTB.6 = 1; //silownik obrotowy na ktorym jest maly chwytajacy precik 
                 sek3 = 0;
@@ -5419,7 +5554,7 @@ switch(proces[3])
                 sek3 = 0;
                 wydaj_dzwiek();
                 komunikat_14_na_panel();
-                PORTB.5 = 0; //si³ownik ma³y chwytania prêcika
+                PORTB.5 = 0; //siï¿½ownik maï¿½y chwytania prï¿½cika
                 }
             if(PORTB.5 == 0 & sprawdz_pin7(PORTHH,0x73) == 0)
                  {
@@ -5434,7 +5569,7 @@ switch(proces[3])
             
             if(sek3 > 25)  //50 02.08  
                 {
-                //PORTB.1 = 1; //si³ownik chwytania lancy
+                //PORTB.1 = 1; //siï¿½ownik chwytania lancy
                 PORTB.2 = 1; //wkladanie do lancy precika z grzybkiem
                 sek3 = 0;
                 proces[3] = 7;
@@ -5457,8 +5592,8 @@ switch(proces[3])
            
             if(sek3 > 30)  //50  02.08  
                 {
-                PORTB.5 = 0; //si³ownik ma³y chwytania prêcika - puszczenie precika
-                //PORTB.1 = 0; //si³ownik chwytania lancy - puszczenie
+                PORTB.5 = 0; //siï¿½ownik maï¿½y chwytania prï¿½cika - puszczenie precika
+                //PORTB.1 = 0; //siï¿½ownik chwytania lancy - puszczenie
                 sek3 = 0;
                 proces[3] = 9;  ///bylo 9 omijam teraz te dwa ponizej  //jednak finalnie nie omijam
                                 //jednal omijam tylko jednego ponizej
@@ -5468,7 +5603,7 @@ switch(proces[3])
     
         
     case 9: 
-            if(sek3 > 20)        //zmieniam dnia 19.12.2025 - by³o 10
+            if(sek3 > 20)        //zmieniam dnia 19.12.2025 - byï¿½o 10
                 {
                 if(wiezyczka_prozniowa_global == 0)
                     PORTB.2 = 0; //wkladanie do lancy precika z grzybkiem - powrot silownikiem -wylaczam dnia 08.01.2025 dla prozni 
@@ -5478,9 +5613,9 @@ switch(proces[3])
     break;
        
     case 10: 
-            if(sek3 > 20)       //zmieniam dnia 19.12.2025 - by³o 10
+            if(sek3 > 20)       //zmieniam dnia 19.12.2025 - byï¿½o 10
                 {  
-                PORTB.1 = 0; //si³ownik chwytania lancy - puszczenie
+                PORTB.1 = 0; //siï¿½ownik chwytania lancy - puszczenie
                 //PORTB.6 = 0; //silownik obrotowy na ktorym jest maly chwytajacy precik - powrot
                 PORTC.4 = 1;  //bramka grzybkow z precikiem znowu sie blokuje 
                 sek3 = 0;       
@@ -5614,7 +5749,7 @@ if(skonczony_proces[0] == 1 & skonczony_proces[1] == 1 & skonczony_proces[2] == 
             }
         }
 
-//to ju¿ jest ten glowny co chodzi w kolko      
+//to juï¿½ jest ten glowny co chodzi w kolko      
 if(skonczony_proces[0] == 1 & skonczony_proces[1] == 1 & skonczony_proces[2] == 1 & skonczony_proces[3] == 1 & start >= 8) 
         {
         z = czekaj_na_guzik_start();
@@ -6140,6 +6275,8 @@ while (1)
         delay_ms(1000);
         licznik_pucharow = rand();
         aktualizuj_wyswietlacz_ilosci();
+        monitoruj_do_listy();   // DODANE: zbierz wybrane wartosci do listy
+        wyslij_liste();         // DODANE: wyslij je nieblokujaco (async)
         delay_ms(1000);
         
         
@@ -6163,25 +6300,25 @@ i2c_init();
 //WE
 //IN1 na karcie 8
 //IN2 na pcf
-//sprawdz_pin0(PORTHH,0x73)//PINA.0    czujnik ciœnienia
+//sprawdz_pin0(PORTHH,0x73)//PINA.0    czujnik ciï¿½nienia
 //sprawdz_pin1(PORTHH,0x73)//PINA.1    czujnik widzenia grzybka
-//sprawdz_pin2(PORTHH,0x73)//PINA.2    czujnik 1 widzenia prêta gwintowanego na rynnie
-//sprawdz_pin3(PORTHH,0x73)//PINA.3   czujnik 2 widzenia prêta gwintowanego na rynnie
+//sprawdz_pin2(PORTHH,0x73)//PINA.2    czujnik 1 widzenia prï¿½ta gwintowanego na rynnie
+//sprawdz_pin3(PORTHH,0x73)//PINA.3   czujnik 2 widzenia prï¿½ta gwintowanego na rynnie
 //sprawdz_pin4(PORTHH,0x73)//PINA.4    czujnik od silnika grzebieni
 //sprawdz_pin5(PORTHH,0x73)//PINA.5    sygnal braku kleju - informacja z dozownika kleju - nie wykorzystuje, zmieniam na czujnik chwycenia preta
 //sprawdz_pin6(PORTHH,0x73)//PINA.6    sygnal gotowosci do pracy dozownika kleju - zmieniam na czujnik czy sa prety gorne
-//sprawdz_pin7(PORTHH,0x73)//PINA.7    guzik czy monter dokrecil grzybka, je¿eli by³a taka potrzeba
+//sprawdz_pin7(PORTHH,0x73)//PINA.7    guzik czy monter dokrecil grzybka, jeï¿½eli byï¿½a taka potrzeba
 
 
 
 //IN2 na karcie 8
 //IN3 na pcf
-//sprawdz_pin0(PORTKK,0x79)//PINF.0   wlacznik tasmociagu monterow 1 dawnij, teraz: czujnik czy w³o¿y³ grzybek do lufy //zmieniam dnia 06.07.2022 na informacje z zoltego o zapaleniu zoltej lampki
+//sprawdz_pin0(PORTKK,0x79)//PINF.0   wlacznik tasmociagu monterow 1 dawnij, teraz: czujnik czy wï¿½oï¿½yï¿½ grzybek do lufy //zmieniam dnia 06.07.2022 na informacje z zoltego o zapaleniu zoltej lampki
             //czyli jak 1 to zapalona lampka, jak 0 to zgaszona
-//sprawdz_pin1(PORTKK,0x79)//PINF.1    teraz czy si³ownik chwytaj¹cy wie¿e jest zamkniety  //znowu idzie out//teraz sygnal odpowiedzi od Slave 
+//sprawdz_pin1(PORTKK,0x79)//PINF.1    teraz czy siï¿½ownik chwytajï¿½cy wieï¿½e jest zamkniety  //znowu idzie out//teraz sygnal odpowiedzi od Slave 
 //sprawdz_pin2(PORTKK,0x79)//PINF.2   monter 1 wykonal dawniej //tu teraz podpinamy czujnik czy jest grzybek 
 //sprawdz_pin3(PORTKK,0x79)//PINF.3    monter 2 wykonal dawnij //teraz sygnal ze kurtyna jest aktywna 
-//sprawdz_pin4(PORTKK,0x79)//PINF.4   monter 3 wykonal (dawniej czujnik indukcyjny widzacy wieze - ju¿ go nie ma)
+//sprawdz_pin4(PORTKK,0x79)//PINF.4   monter 3 wykonal (dawniej czujnik indukcyjny widzacy wieze - juï¿½ go nie ma)
 //sprawdz_pin5(PORTKK,0x79)//PINF.5    czujnik czy dokrecil grzybka
 //sprawdz_pin6(PORTKK,0x79)//PINF.6    czujnik ze jedzie lancuchowy
 //sprawdz_pin7(PORTKK,0x79)//PINF.7    sygnal ze kurtyna zadzialala - jak ktos wlozyl lape to bedzie 0
@@ -6200,38 +6337,38 @@ i2c_init();
 //WY
 //OUT1
 //PORTB.0   zaciskanie grzybka w lancy
-//PORTB.1   si³ownik chwytania lancy
+//PORTB.1   siï¿½ownik chwytania lancy
 //PORTB.2   wkladanie do lancy precika z grzybkiem
 //PORTB.3   silownik przytrzymujacy grzybka od gory
 //PORTB.4   silownik pozycjonujacy preta jeszcze na zjezdzalni
-//PORTB.5   si³ownik ma³y chwytania prêcika
+//PORTB.5   siï¿½ownik maï¿½y chwytania prï¿½cika
 //PORTB.6   silownik obrotowy na ktorym jest maly chwytajacy precik
 //PORTB.7   silownik dociskajacy pret na grzebieniach
 
 //OUT2
 //PORTC.0   ZMIANA - SYGNALIZATOR DZWIEKOWY
 //PORTC.1   silownik pobierania grzybow duzy
-//PORTC.2   silownik pobierania grzybow maly - droga DO grzebienie pod ciœnieniem
+//PORTC.2   silownik pobierania grzybow maly - droga DO grzebienie pod ciï¿½nieniem
 //PORTC.3   silownik na ktorym jest silnik dokrecajacy grzybki
 //PORTC.4   dawniej silownik trzymajcy strzelanie klejem - zmieniam na silownik bramki precikow z grzybkiem
-//PORTC.5   si³ownik 3 kolejkuj¹cy na rynnie
-//PORTC.6   si³ownik 2 kolejkuj¹cy na rynnie  
-//PORTC.7   si³ownik 1 kolejkuj¹cy na rynnie
+//PORTC.5   siï¿½ownik 3 kolejkujï¿½cy na rynnie
+//PORTC.6   siï¿½ownik 2 kolejkujï¿½cy na rynnie  
+//PORTC.7   siï¿½ownik 1 kolejkujï¿½cy na rynnie
 
 //OUT4
 //PORTA.0//PORTD.0   silnik przenosnika pretow 
 //PORTA.1//PORTD.1   silnik dokrecajacy grzybki
-//PORTA.2//PORTD.2   DAWNIEJ kana³ 1 RS232, TERAZ   zgoda na zacisniecie szczek w wersji komunikacja uproszczona    
-//PORTA.3//PORTD.3   DAWNIEJ kana³ 1 RS232, TERAZ sygnal do przesylania informacji malych pucharach
+//PORTA.2//PORTD.2   DAWNIEJ kanaï¿½ 1 RS232, TERAZ   zgoda na zacisniecie szczek w wersji komunikacja uproszczona    
+//PORTA.3//PORTD.3   DAWNIEJ kanaï¿½ 1 RS232, TERAZ sygnal do przesylania informacji malych pucharach
 //PORTA.4//PORTD.4   orientator grzybkow
 //PORTA.5//PORTD.5   dozownik kleju zasilanie 220V //juz nie - teraz obrot przez optoprzekaznik 
 //PORTA.6//PORTD.6   SPALONY DAWNIEJ, TERAZ DAJE TU SYGNAL JAKO PRZECINEK MIEDZY PACZKAMI DANYCH - informacja o malych puchyarach 
 //PORTA.7//PORTD.7   LAMPA BRAK PRETOW
 
 //OUT3
-//PORTE.0   kana³ 0 RS232
-//PORTE.1   kana³ 0 RS232
-//PORTE.2   silownik pobierania grzybow maly - droga OD grzebienie pod ciœnieniem  
+//PORTE.0   kanaï¿½ 0 RS232
+//PORTE.1   kanaï¿½ 0 RS232
+//PORTE.2   silownik pobierania grzybow maly - droga OD grzebienie pod ciï¿½nieniem  
 //PORTE.3   PSIKANIE NA GRZYBEK zeby nie spadl przy malych pretach
 //PORTE.4   wlaczenie lania kleju  - moge cos tu dawac!!!!!!!!25.07.2022    //tu daje wysuniecie psikania na male prety
 //PORTE.5   sekwencja startowa pivexin
@@ -6248,8 +6385,8 @@ i2c_init();
 //PORTF.6    psikanie powietrzem 
  
 //PROCESY
-//proces_0 - kolejkowanie prêta na zje¿d¿alni
-//proces_1 - nak³adanie kleju
+//proces_0 - kolejkowanie prï¿½ta na zjeï¿½dï¿½alni
+//proces_1 - nakï¿½adanie kleju
 //proces_2 - nakrecanie grzybka
 //proces_3 - pobieranie grzybka i wsadzanie do lancy
 
