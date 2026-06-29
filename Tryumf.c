@@ -432,6 +432,189 @@ unsigned char wyslij(unsigned int id, unsigned int value)
     return wyslij_zdarzenie_async(id, value, czytaj_ticks());
 }
 
+
+/* ======================================================================
+   DODANE: SYMULACJA NORMALNEGO CYKLU CZUJNIKOW (telemetria przez wyslij())
+   Ustaw TRYB_SYMULACJI 0 aby wrocic do normalnej pracy. Id wg REGISTER_MAP.md
+   ====================================================================== */
+#define TRYB_SYMULACJI 1        /* 1 = symulacja cyklu, 0 = normalna praca */
+
+/* --- czujniki (kind = sensor) --- */
+#define SYG_CZ_WIDZENIA_GRZYBKA   11
+#define SYG_CZ_PRET_RYNNA_1       12
+#define SYG_CZ_PRET_RYNNA_2       13
+#define SYG_CZ_SILNIK_GRZEBIENI   14
+#define SYG_CZ_CHWYCENIA_PRETA    15
+#define SYG_CZ_PRETY_GORNE        16
+#define SYG_GUZIK_DOKRECIL        17
+#define SYG_CZ_JEST_GRZYBEK       22
+#define SYG_KURTYNA_AKTYWNA       23
+#define SYG_CZ_DOKRECIL_GRZYBKA   25
+#define SYG_LANCUCHOWY_JEDZIE     26
+#define SYG_KURTYNA_ZADZIALALA    27
+#define SYG_KOLOR_ZIELONY         30
+#define SYG_KOLOR_CZERWONY        31
+#define SYG_KOLOR_NIEBIESKI       32
+#define SYG_KOLOR_ZOLTY           33
+/* --- silowniki / wyjscia (kind = actuator) --- */
+#define SYG_ZACISK_GRZYBKA_LANCA  40
+#define SYG_CHWYTANIE_LANCY       41
+#define SYG_WKLAD_PRECIKA_LANCA   42
+#define SYG_PRZYTRZYM_GRZYBKA     43
+#define SYG_POZYCJ_PRETA          44
+#define SYG_DOCISK_PRET_GRZEB     47
+#define SYG_SYGNALIZATOR_DZW      50
+#define SYG_SILNIK_DOKRECAJACY_S  53
+#define SYG_KOLEJK_1              57
+#define SYG_PRZENOSNIK_PRETOW     60
+#define SYG_SILNIK_DOKRECAJACY    61
+#define SYG_ORIENTATOR_GRZYBKOW   64
+#define SYG_DOZOWNIK_KLEJU_OBROT  65
+#define SYG_LAMPA_BRAK_PRETOW     67
+#define SYG_PSIKANIE_NA_GRZYBEK   71
+#define SYG_ZASILANIE_DOZOWNIK    84
+#define SYG_LANIE_KLEJU_WODY      85
+#define SYG_PSIKANIE_POWIETRZEM   86
+/* --- liczniki / wartosci (kind = value) --- */
+#define SYG_LICZNIK_PUCHAROW      100
+#define SYG_LICZNIK_GLOBAL        101
+#define SYG_CZAS_PROCESU          102
+#define SYG_WIELKOSC_KAMIENIA     103
+#define SYG_STAN_MASZYNY          104
+
+#define SYM_AWARIA_PROC           8     /* % awarii na cykl (0 = nigdy) */
+
+/* Wysylka z obsluga zapelnienia bufora async (nie gubi zdarzen). */
+void sym_ev(unsigned int id, unsigned int val)
+{
+    unsigned char proby = 0;
+    while (!wyslij(id, val)) {
+        delay_ms(2);
+        if (++proby > 100) break;
+    }
+}
+
+unsigned char sym_zainicjowano = 0;
+void sym_init_rand(void)
+{
+    if (!sym_zainicjowano) { srand((unsigned int)(czytaj_ticks() | 1)); sym_zainicjowano = 1; }
+}
+
+/* Zgaszenie czujnikow chwilowych na koniec cyklu (czyste zmiany 0->1). */
+void sym_zeruj_chwilowe(void)
+{
+    sym_ev(SYG_CZ_PRETY_GORNE, 0);      sym_ev(SYG_CZ_PRET_RYNNA_1, 0);
+    sym_ev(SYG_CZ_PRET_RYNNA_2, 0);     sym_ev(SYG_CZ_CHWYCENIA_PRETA, 0);
+    sym_ev(SYG_CZ_SILNIK_GRZEBIENI, 0); sym_ev(SYG_CZ_JEST_GRZYBEK, 0);
+    sym_ev(SYG_CZ_WIDZENIA_GRZYBKA, 0); sym_ev(SYG_CZ_DOKRECIL_GRZYBKA, 0);
+    sym_ev(SYG_LANCUCHOWY_JEDZIE, 0);
+}
+
+/* Pomiar koloru: jeden czujnik koloru ON, reszta OFF + losowa wielkosc. */
+void sym_pomiar_koloru(void)
+{
+    unsigned char k = rand() % 4;
+    sym_ev(SYG_KOLOR_ZIELONY,  (k == 0) ? 1 : 0);
+    sym_ev(SYG_KOLOR_CZERWONY, (k == 1) ? 1 : 0);
+    sym_ev(SYG_KOLOR_NIEBIESKI,(k == 2) ? 1 : 0);
+    sym_ev(SYG_KOLOR_ZOLTY,    (k == 3) ? 1 : 0);
+    delay_ms(300);
+    sym_ev(SYG_WIELKOSC_KAMIENIA, 40 + (rand() % 56));
+    delay_ms(200);
+    sym_ev(SYG_KOLOR_ZIELONY + k, 0);
+}
+
+/* Sporadyczna awaria: brak pretow albo kurtyna. */
+void sym_awaria(void)
+{
+    sym_ev(SYG_SYGNALIZATOR_DZW, 1);
+    if (rand() & 1) {
+        sym_ev(SYG_STAN_MASZYNY, 9);  sym_ev(SYG_LAMPA_BRAK_PRETOW, 1);
+        delay_ms(800);                sym_ev(SYG_LAMPA_BRAK_PRETOW, 0);
+    } else {
+        sym_ev(SYG_STAN_MASZYNY, 8);  sym_ev(SYG_KURTYNA_AKTYWNA, 1);
+        sym_ev(SYG_KURTYNA_ZADZIALALA, 1); delay_ms(900);
+        sym_ev(SYG_KURTYNA_ZADZIALALA, 0); sym_ev(SYG_KURTYNA_AKTYWNA, 0);
+    }
+    sym_ev(SYG_SYGNALIZATOR_DZW, 0);
+    delay_ms(300);
+}
+
+/* JEDEN pelny, NORMALNY cykl montazu pucharu. */
+void symuluj_cykl_pucharu(void)
+{
+    static unsigned int licznik = 0;
+    static unsigned int licznik_glob = 0;
+    unsigned long t0, dt;
+    unsigned int sek;
+
+    sym_init_rand();
+    if ((unsigned char)(rand() % 100) < SYM_AWARIA_PROC) sym_awaria();
+    t0 = czytaj_ticks();
+
+    /* start cyklu */
+    sym_ev(SYG_STAN_MASZYNY, 1);             delay_ms(300);
+    /* podawanie preta */
+    sym_ev(SYG_PRZENOSNIK_PRETOW, 1);        delay_ms(400);
+    sym_ev(SYG_CZ_PRETY_GORNE, 1);           delay_ms(300);
+    sym_ev(SYG_KOLEJK_1, 1);                 delay_ms(200);
+    sym_ev(SYG_CZ_PRET_RYNNA_1, 1);          delay_ms(300);
+    sym_ev(SYG_CZ_PRET_RYNNA_2, 1);          delay_ms(200);
+    sym_ev(SYG_KOLEJK_1, 0);
+    sym_ev(SYG_POZYCJ_PRETA, 1);             delay_ms(400);
+    sym_ev(SYG_CZ_CHWYCENIA_PRETA, 1);       delay_ms(200);
+    sym_ev(SYG_POZYCJ_PRETA, 0);
+    sym_ev(SYG_PRZYTRZYM_GRZYBKA, 1);        delay_ms(300);
+    sym_ev(SYG_DOCISK_PRET_GRZEB, 1);        delay_ms(300);
+    sym_ev(SYG_CZ_SILNIK_GRZEBIENI, 1);      delay_ms(300);
+    /* obsluga grzybka */
+    sym_ev(SYG_ORIENTATOR_GRZYBKOW, 1);      delay_ms(400);
+    sym_ev(SYG_CZ_JEST_GRZYBEK, 1);          delay_ms(200);
+    sym_ev(SYG_CZ_WIDZENIA_GRZYBKA, 1);      delay_ms(300);
+    sym_ev(SYG_CHWYTANIE_LANCY, 1);          delay_ms(300);
+    sym_ev(SYG_ZACISK_GRZYBKA_LANCA, 1);     delay_ms(300);
+    sym_ev(SYG_WKLAD_PRECIKA_LANCA, 1);      delay_ms(400);
+    sym_ev(SYG_WKLAD_PRECIKA_LANCA, 0);
+    sym_ev(SYG_ORIENTATOR_GRZYBKOW, 0);
+    /* pomiar koloru / wielkosci */
+    sym_pomiar_koloru();
+    /* dokrecanie grzybka */
+    sym_ev(SYG_SILNIK_DOKRECAJACY, 1);
+    sym_ev(SYG_SILNIK_DOKRECAJACY_S, 1);     delay_ms(600);
+    sym_ev(SYG_CZ_DOKRECIL_GRZYBKA, 1);      delay_ms(200);
+    sym_ev(SYG_SILNIK_DOKRECAJACY, 0);
+    sym_ev(SYG_SILNIK_DOKRECAJACY_S, 0);
+    if (rand() & 1) { sym_ev(SYG_GUZIK_DOKRECIL, 1); delay_ms(200); sym_ev(SYG_GUZIK_DOKRECIL, 0); }
+    /* klej / psikanie */
+    sym_ev(SYG_ZASILANIE_DOZOWNIK, 1);       delay_ms(200);
+    sym_ev(SYG_DOZOWNIK_KLEJU_OBROT, 1);     delay_ms(300);
+    sym_ev(SYG_LANIE_KLEJU_WODY, 1);         delay_ms(400);
+    sym_ev(SYG_LANIE_KLEJU_WODY, 0);
+    sym_ev(SYG_PSIKANIE_NA_GRZYBEK, 1);      delay_ms(300);
+    sym_ev(SYG_PSIKANIE_NA_GRZYBEK, 0);
+    sym_ev(SYG_PSIKANIE_POWIETRZEM, 1);      delay_ms(200);
+    sym_ev(SYG_PSIKANIE_POWIETRZEM, 0);
+    sym_ev(SYG_DOZOWNIK_KLEJU_OBROT, 0);
+    sym_ev(SYG_ZASILANIE_DOZOWNIK, 0);
+    /* zwolnienie i wyjazd pucharu */
+    sym_ev(SYG_ZACISK_GRZYBKA_LANCA, 0);
+    sym_ev(SYG_CHWYTANIE_LANCY, 0);
+    sym_ev(SYG_PRZYTRZYM_GRZYBKA, 0);
+    sym_ev(SYG_DOCISK_PRET_GRZEB, 0);
+    sym_ev(SYG_LANCUCHOWY_JEDZIE, 1);        delay_ms(500);
+    sym_ev(SYG_PRZENOSNIK_PRETOW, 0);
+    /* liczniki i koniec cyklu */
+    licznik++; licznik_glob++;
+    dt  = czytaj_ticks() - t0;               /* 1 tick = 16,384 ms */
+    sek = (unsigned int)((dt * 16384UL) / 1000000UL);
+    sym_ev(SYG_LICZNIK_PUCHAROW, licznik);
+    sym_ev(SYG_LICZNIK_GLOBAL,   licznik_glob);
+    sym_ev(SYG_CZAS_PROCESU,     sek);
+    sym_ev(SYG_STAN_MASZYNY,     2);         delay_ms(300);
+    sym_zeruj_chwilowe();
+    sym_ev(SYG_STAN_MASZYNY, 0);             delay_ms(500);
+}
+
 // --- lista zdarzen: {id, value, ts} ---
 typedef struct { unsigned int id; unsigned int value; unsigned long ts; } zdarzenie_t;
 #define LISTA_ROZMIAR 64
@@ -6271,6 +6454,12 @@ licznik_pucharow = 0;
 // Global enable interrupts (WYMAGANE: asynchroniczny TX dziala przez ISR USART1_DRE)
 #asm("sei")
 
+// ============== DODANE: TRYB SYMULACJI CYKLU CZUJNIKOW ==============
+#if TRYB_SYMULACJI
+while (1) symuluj_cykl_pucharu();   /* petla symulacji - nigdy nie wraca */
+#endif
+/* =============================================================== */
+
 while (1)
     {
         
@@ -6489,4 +6678,4 @@ while (1)
 
 
 
- 
+   
