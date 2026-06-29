@@ -6266,17 +6266,22 @@ SPCR=0x00;
 TWCR=0x00;
 
 //////////////////////////
+licznik_pucharow = 0;
 
+// Global enable interrupts (WYMAGANE: asynchroniczny TX dziala przez ISR USART1_DRE)
+#asm("sei")
 
 while (1)
     {
         
         delta_write_param(0x07, 0x06, -5000);
         delay_ms(1000);
-        licznik_pucharow = rand();
+        licznik_pucharow++;
         aktualizuj_wyswietlacz_ilosci();
+        delay_ms(1000);
         monitoruj_do_listy();   // DODANE: zbierz wybrane wartosci do listy
         wyslij_liste();         // DODANE: wyslij je nieblokujaco (async)
+        //wyslij(10,1);
         delay_ms(1000);
         
         
