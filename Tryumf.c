@@ -607,11 +607,14 @@ void wyslij_ilosc_na_wyswietlacz(long int value)
 int ostatnia_wyslana_ilosc = -1;
 void aktualizuj_wyswietlacz_ilosci(void)
 {
-    if (licznik_pucharow != ostatnia_wyslana_ilosc)
-    {
+    licznik_pucharow = 10;
+    
+    //if (licznik_pucharow != ostatnia_wyslana_ilosc)
+    //{
         wyslij_ilosc_na_wyswietlacz((long int)licznik_pucharow);
-        ostatnia_wyslana_ilosc = licznik_pucharow;
-    }
+    //    ostatnia_wyslana_ilosc = licznik_pucharow;
+    //}
+    
 }
 
 
@@ -1773,7 +1776,7 @@ putchar(130);  //82
 putchar(96);    //20
 putchar(32);  //adres 60
 putchar(0);    //00
-putchar(250);   //   //50 55 60 65 70 75  
+putchar(25);   //   //50 55 60 65 70 75  
 
 }
 
@@ -3500,7 +3503,9 @@ int rozpoczalem_ruch_preta = 0;
 int zwloka_czasowa = 0;
 int predkosc = 0;
 int predkosc_obliczona = 0;
-
+int opoznienie = 0;
+static int opoznienie_old;
+    
 long int time = 0;
 long int time1 = 0;
 int przenies_przez_falownik = 0;
@@ -3510,6 +3515,10 @@ static int wykrylem_normalna;
 static int wykrylem_prozniowa;
 static int licznik_wykrylem_normalna;
 static int licznik_wykrylem_prozniowa;
+
+unsigned long base_value = 0x00000801; 
+unsigned char X = 0xA; 
+unsigned long final_value = (base_value & 0xFFFF0FFF) | ((unsigned long)(X &0x0F) << 12);
 
 
 liczenie = 0;
@@ -3694,6 +3703,33 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                     predkosc = odpytaj_parametr_panelu(96,16);
                     predkosc_obliczona = -100 * predkosc; 
                     delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
+                    
+                    opoznienie = odpytaj_parametr_panelu(96,32);
+                    if(opoznienie_old != opoznienie)     
+                        {
+                        opoznienie_old = opoznienie;
+                        
+                        if(opoznienie < 12)
+                            X = 0x6;
+                        if(opoznienie >= 12 && opoznienie < 15)
+                            X = 0x7;
+                        if(opoznienie >= 15 && opoznienie < 20)
+                            X = 0x8;
+                        if(opoznienie >= 20 && opoznienie < 25)
+                            X = 0x9;
+                        if(opoznienie >= 25 && opoznienie < 30)
+                            X = 0xA;
+                        if(opoznienie >= 30 && opoznienie < 50)
+                            X = 0xB;
+                        if(opoznienie >= 50 && opoznienie < 80)
+                            X = 0xC;
+                        if(opoznienie >= 80)
+                            X = 0xD;
+    
+                        //opoznienie
+                        final_value = (base_value & 0xFFFF0FFF) | ((unsigned long)(X &0x0F) << 12);
+                        delta_write_param(0x07, 0x04, final_value);
+                        } 
                     
                     wiezyczka_prozniowa = sprawdz_czy_wiezyczka_prozniowa();
                     if(wiezyczka_prozniowa == 0)
@@ -3999,6 +4035,9 @@ int przyspiesznie = 0;
 int predkosc = 0;
 int predkosc_obliczona = 0;
 int opoznienie = 0;
+unsigned long base_value = 0x00000801; 
+unsigned char X = 0xA; 
+unsigned long final_value = (base_value & 0xFFFF0FFF) | ((unsigned long)(X &0x0F) << 12);
 
 
 PORT_F.bits.b4 = 1;   //przekaznik uruchamiajacy dozownik kleju
@@ -4392,25 +4431,53 @@ krok_tasmociagu_z_lufami = getchar();
     
 if(krok_tasmociagu_z_lufami == 1)
      {
+     
+     /*
+     //testwo na prosbe eweliny ilosc pucharow do zmontoqania 
+     ///////////////////////////////////////////////////////////////////////////////////////////////
+     il_pretow_gwintowanych = odpytaj_parametr_panelu_duze_liczby(0,112);
+     wyswietl_ilosc_zmontowanych_pucharow(il_pretow_gwintowanych,il_pretow_gwintowanych);
+     //aktualizuj_wyswietlacz_ilosci();
+     //////////////////////////////////////////////////////////////////////////////////////////////
+     
+     
      przyspiesznie = odpytaj_parametr_panelu(96,0);
      predkosc = odpytaj_parametr_panelu(96,16);
      predkosc_obliczona = -100 * predkosc; 
      opoznienie = odpytaj_parametr_panelu(96,32);
      
+     if(opoznienie < 12)
+        X = 0x6;
+     if(opoznienie >= 12 && opoznienie < 15)
+        X = 0x7;
+     if(opoznienie >= 15 && opoznienie < 20)
+        X = 0x8;
+     if(opoznienie >= 20 && opoznienie < 25)
+        X = 0x9;
+     if(opoznienie >= 25 && opoznienie < 30)
+        X = 0xA;
+     if(opoznienie >= 30 && opoznienie < 50)
+        X = 0xB;
+     if(opoznienie >= 50 && opoznienie < 80)
+        X = 0xC;
+     if(opoznienie >= 80)
+        X = 0xD;
+        
      //przyspieszanie
      //delta_write_param(0x05, 0x07, przyspiesznie);      //zapis do tasmociagu lancuchowego
      //delay_ms(2000);
-     
+     */
      //predkosc
+     
+     #asm("sei")
      
      delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
      delay_ms(1000);
      
      //opoznienie
-     //delta_write_param(0x05, 0x07, opoznienie);      //zapis do tasmociagu lancuchowego
-     //delay_ms(2000);
-     
-     
+     //final_value = (base_value & 0xFFFF0FFF) | ((unsigned long)(X &0x0F) << 12);
+     //delta_write_param(0x07, 0x04, final_value);
+
      komunikacja_startowa_male_puchary(wynik_wyboru_male_puchary);
      delay_ms(500); //do tej komunikacji
      
@@ -5633,7 +5700,9 @@ switch(proces[3])
                 sek3 = 0;
                 proces[3] = 0;
                 wynik = 1;
-                il_pretow_gwintowanych--;   
+                il_pretow_gwintowanych--;  
+                //aktualizuj_wyswietlacz_ilosci();
+                 
                 if(start == 7)  //do sytuacji startowej
                     {
                     start = 8;
@@ -6271,23 +6340,23 @@ licznik_pucharow = 0;
 // Global enable interrupts (WYMAGANE: asynchroniczny TX dziala przez ISR USART1_DRE)
 #asm("sei")
 
-while (1)
-    {
-        
-        delta_write_param(0x07, 0x06, -5000);
-        delay_ms(1000);
-        licznik_pucharow++;
-        aktualizuj_wyswietlacz_ilosci();
-        delay_ms(1000);
-        monitoruj_do_listy();   // DODANE: zbierz wybrane wartosci do listy
-        wyslij_liste();         // DODANE: wyslij je nieblokujaco (async)
-        //wyslij(10,1);
-        delay_ms(1000);
+//while (1)
+//    {
+//        
+//        delta_write_param(0x07, 0x06, -5000);
+//        delay_ms(1000);
+//        licznik_pucharow++;
+//        aktualizuj_wyswietlacz_ilosci();
+//        delay_ms(1000);
+//        monitoruj_do_listy();   // DODANE: zbierz wybrane wartosci do listy
+//        wyslij_liste();         // DODANE: wyslij je nieblokujaco (async)
+//        //wyslij(10,1);
+//        delay_ms(1000);
         
         
   
         
-    }
+//    }
 //////////////////////////
 
 
