@@ -437,7 +437,7 @@ unsigned char wyslij(unsigned int id, unsigned int value)
    DODANE: SYMULACJA NORMALNEGO CYKLU CZUJNIKOW (telemetria przez wyslij())
    Ustaw TRYB_SYMULACJI 0 aby wrocic do normalnej pracy. Id wg REGISTER_MAP.md
    ====================================================================== */
-#define TRYB_SYMULACJI 1        /* 1 = symulacja cyklu, 0 = normalna praca */
+#define TRYB_SYMULACJI 0        /* 1 = symulacja cyklu, 0 = normalna praca */
 
 /* --- czujniki (kind = sensor) --- */
 #define SYG_CZ_WIDZENIA_GRZYBKA   11
@@ -655,13 +655,45 @@ void dodaj_jesli_zmiana(unsigned int id, int value)
     }
 }
 
-// ====== TU WYBIERASZ CO MONITOROWAC (id wg REGISTER_MAP.md) ======
+// ====== MONITORING BIEZACYCH WARTOSCI WSZYSTKICH CZUJNIKOW ======
+// Odczytujemy kazdy ekspander PCF8574 RAZ (jeden odczyt I2C na uklad zamiast
+// jednego na pin) i rozbijamy bajt na bity. Mapowanie pinow wg opisu w main().
 void monitoruj_do_listy(void)
 {
-    dodaj_jesli_zmiana(10, sprawdz_pin0(PORTHH,0x73));   // czujnik_cisnienia
-    dodaj_jesli_zmiana(40, PORTB.0);                     // przyklad: silownik
-    dodaj_jesli_zmiana(100, licznik_pucharow);           // ilosc
-    // ... dodaj wg potrzeb
+    BB hh, kk, gg;
+
+    // --- odczyt trzech ekspanderow wejsciowych ---
+    i2c_start(); i2c_write(0x73); hh.byte = i2c_read(0); i2c_stop();  // IN1
+    i2c_start(); i2c_write(0x79); kk.byte = i2c_read(0); i2c_stop();  // IN3
+    i2c_start(); i2c_write(0x71); gg.byte = i2c_read(0); i2c_stop();  // IN4
+
+    // --- czujniki na PCF 0x73 (karta IN1) ---
+    dodaj_jesli_zmiana(10,                        hh.bits.b0);  // czujnik cisnienia
+    dodaj_jesli_zmiana(SYG_CZ_WIDZENIA_GRZYBKA,   hh.bits.b1);
+    dodaj_jesli_zmiana(SYG_CZ_PRET_RYNNA_1,       hh.bits.b2);
+    dodaj_jesli_zmiana(SYG_CZ_PRET_RYNNA_2,       hh.bits.b3);
+    dodaj_jesli_zmiana(SYG_CZ_SILNIK_GRZEBIENI,   hh.bits.b4);
+    dodaj_jesli_zmiana(SYG_CZ_CHWYCENIA_PRETA,    hh.bits.b5);
+    dodaj_jesli_zmiana(SYG_CZ_PRETY_GORNE,        hh.bits.b6);
+    dodaj_jesli_zmiana(SYG_GUZIK_DOKRECIL,        hh.bits.b7);
+
+    // --- czujniki na PCF 0x79 (karta IN3) ---
+    dodaj_jesli_zmiana(SYG_CZ_JEST_GRZYBEK,       kk.bits.b2);
+    dodaj_jesli_zmiana(SYG_KURTYNA_AKTYWNA,       kk.bits.b3);
+    dodaj_jesli_zmiana(SYG_CZ_DOKRECIL_GRZYBKA,   kk.bits.b5);
+    dodaj_jesli_zmiana(SYG_LANCUCHOWY_JEDZIE,     kk.bits.b6);
+    dodaj_jesli_zmiana(SYG_KURTYNA_ZADZIALALA,    kk.bits.b7);
+
+    // --- czujniki koloru na PCF 0x71 (karta IN4) ---
+    dodaj_jesli_zmiana(SYG_KOLOR_ZIELONY,         gg.bits.b0);
+    dodaj_jesli_zmiana(SYG_KOLOR_CZERWONY,        gg.bits.b2);
+    dodaj_jesli_zmiana(SYG_KOLOR_NIEBIESKI,       gg.bits.b4);
+    dodaj_jesli_zmiana(SYG_KOLOR_ZOLTY,           gg.bits.b5);
+
+    // --- liczniki / wartosci ---
+    dodaj_jesli_zmiana(SYG_LICZNIK_PUCHAROW,      licznik_pucharow);
+    dodaj_jesli_zmiana(SYG_LICZNIK_GLOBAL,        licznik_pucharow_global);
+    dodaj_jesli_zmiana(SYG_WIELKOSC_KAMIENIA,     wielkosc_kamienia);
 }
 
  unsigned char UART1_recv(unsigned char *data, unsigned int ms)
@@ -6460,22 +6492,19 @@ while (1) symuluj_cykl_pucharu();   /* petla symulacji - nigdy nie wraca */
 #endif
 /* =============================================================== */
 
+// ====== PETLA TELEMETRII: biezace wartosci WSZYSTKICH czujnikow ======
+// Odczyt czujnikow przez I2C (PCF8574) -> tylko zmiany na liste -> wyslanie
+// nieblokujace (async) do Raspberry. Bez sterowania maszyna.
+i2c_init();
+{ int _mi; for(_mi=0;_mi<120;_mi++) mon_ostatnie[_mi] = -1; } // wymus pelny snapshot przy starcie
+licznik_pucharow = 0;
 while (1)
     {
-        
-        delta_write_param(0x07, 0x06, -5000);
-        delay_ms(1000);
         licznik_pucharow++;
         aktualizuj_wyswietlacz_ilosci();
+        //monitoruj_do_listy();   // odczyt biezacych wartosci wszystkich czujnikow
+        //wyslij_liste();         // wyslanie zmian nieblokujaco (async)
         delay_ms(1000);
-        monitoruj_do_listy();   // DODANE: zbierz wybrane wartosci do listy
-        wyslij_liste();         // DODANE: wyslij je nieblokujaco (async)
-        //wyslij(10,1);
-        delay_ms(1000);
-        
-        
-  
-        
     }
 //////////////////////////
 
