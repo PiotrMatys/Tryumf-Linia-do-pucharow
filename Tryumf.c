@@ -293,6 +293,7 @@ return wynik;
 int odpytaj_parametr_panelu(int adr1, int adr2)
 {
 int wynik = 0; 
+int oleole = 0;
 
 putchar(90);
 putchar(165);
@@ -308,11 +309,14 @@ getchar();
 getchar();
 getchar();
 getchar();
-getchar();
+oleole = getchar();
 wynik = getchar();
 
+if(oleole > 0)
+        wynik = oleole * 255 + wynik + oleole;
      
 return wynik;
+
 }
 
 ////////////////////
@@ -607,14 +611,18 @@ void wyslij_ilosc_na_wyswietlacz(long int value)
 int ostatnia_wyslana_ilosc = -1;
 void aktualizuj_wyswietlacz_ilosci(void)
 {
-    licznik_pucharow = 10;
-    
     //if (licznik_pucharow != ostatnia_wyslana_ilosc)
     //{
-        wyslij_ilosc_na_wyswietlacz((long int)licznik_pucharow);
+    //    wyslij_ilosc_na_wyswietlacz((long int)licznik_pucharow);
     //    ostatnia_wyslana_ilosc = licznik_pucharow;
     //}
-    
+     
+    //if (il_pretow_gwintowanych != ostatnia_wyslana_ilosc)
+    //{
+        wyslij_ilosc_na_wyswietlacz((long int)il_pretow_gwintowanych);
+    //    ostatnia_wyslana_ilosc = il_pretow_gwintowanych;
+    //}
+        
 }
 
 
@@ -3495,6 +3503,46 @@ while(zwrot == 1 | zwrot == 2 | zwrot == 3 | zwrot == 4 | sekwencja == 0 | sekwe
 }
 
 
+unsigned char wybierz_X_opoznienie(int opoznienie)
+{
+    unsigned char X;
+
+    if(opoznienie < 10)
+        X = 0x0;
+    else if(opoznienie < 15)
+        X = 0x0;
+    else if(opoznienie < 20)
+        X = 0x0;
+    else if(opoznienie < 25)
+        X = 0x1;
+    else if(opoznienie < 30)
+        X = 0x2;
+    else if(opoznienie < 35)
+        X = 0x3;
+    else if(opoznienie < 40)
+        X = 0x4;
+    else if(opoznienie < 45)
+        X = 0x5;
+    else if(opoznienie < 50)
+        X = 0x6;
+    else if(opoznienie < 55)
+        X = 0x7;
+    else if(opoznienie < 60)
+        X = 0x8;
+    else if(opoznienie < 65)
+        X = 0x9;
+    else if(opoznienie < 70)
+        X = 0xA;
+    else if(opoznienie < 75)
+        X = 0xB;
+    else if(opoznienie < 80)
+        X = 0xC;
+    else
+        X = 0xD;
+
+    return X;
+}
+
 void przenies_pret_gwintowany()
 {
 int zwrot = 0;
@@ -3570,6 +3618,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                         
                         if((sprawdz_pin5(PORTHH,0x73) == 0 && start < 8) || (sprawdz_pin5(PORTHH,0x73) == 1 && start >= 8))
                             {
+                            aktualizuj_wyswietlacz_ilosci();
                             PORTB.5 = 0; //si�ownik ma�y chwytania pr�cika - puszczenie
                             //PORTB.2 = 0; //wkladanie do lancy precika z grzybkiem - powrot silownikiem
                             //PORTB.6 = 0; //silownik obrotowy na ktorym jest maly chwytajacy precik - powrot
@@ -3704,32 +3753,16 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                     predkosc_obliczona = -100 * predkosc; 
                     delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
                     
+                    
                     opoznienie = odpytaj_parametr_panelu(96,32);
                     if(opoznienie_old != opoznienie)     
                         {
                         opoznienie_old = opoznienie;
-                        
-                        if(opoznienie < 12)
-                            X = 0x6;
-                        if(opoznienie >= 12 && opoznienie < 15)
-                            X = 0x7;
-                        if(opoznienie >= 15 && opoznienie < 20)
-                            X = 0x8;
-                        if(opoznienie >= 20 && opoznienie < 25)
-                            X = 0x9;
-                        if(opoznienie >= 25 && opoznienie < 30)
-                            X = 0xA;
-                        if(opoznienie >= 30 && opoznienie < 50)
-                            X = 0xB;
-                        if(opoznienie >= 50 && opoznienie < 80)
-                            X = 0xC;
-                        if(opoznienie >= 80)
-                            X = 0xD;
-    
-                        //opoznienie
+                        X = wybierz_X_opoznienie(opoznienie);
                         final_value = (base_value & 0xFFFF0FFF) | ((unsigned long)(X &0x0F) << 12);
-                        delta_write_param(0x07, 0x04, final_value);
+                        delta_write_param(0x07, 0x08, final_value);
                         } 
+                    
                     
                     wiezyczka_prozniowa = sprawdz_czy_wiezyczka_prozniowa();
                     if(wiezyczka_prozniowa == 0)
@@ -4206,27 +4239,15 @@ silownik_kolejkujacy_pierwszy = getchar();
     
 if(silownik_kolejkujacy_pierwszy == 1)
     {
-    // PORT_F.bits.b5 = 1;   //lanie kleju
-    // PORTF = PORT_F.byte;
-    //PORTC.7 = 1;
-    
-    PORTC.2 = 1;   //silownik pobierania grzybow maly - droga DO grzebienie pod ci�nieniem
-    PORTE.2 = 0;  //silownik pobierania grzybow maly - droga OD grzebienie pod ci�nieniem
-    
-    
-    
+    PORT_F.bits.b5 = 1;   //lanie kleju
+    PORTF = PORT_F.byte;
+    PORTC.7 = 1;
     }
 else
     {
-    //PORTC.7 = 0;
-    //PORT_F.bits.b5 = 0;   //lanie kleju
-    //PORTF = PORT_F.byte;
-    
-    PORTC.2 = 0;   //silownik pobierania grzybow maly - droga DO grzebienie pod ci�nieniem
-    PORTE.2 = 1;  //silownik pobierania grzybow maly - droga OD grzebienie pod ci�nieniem
-    
-    
-    
+    PORTC.7 = 0;
+    PORT_F.bits.b5 = 0;   //lanie kleju
+    PORTF = PORT_F.byte;
     } 
     
 
@@ -4249,20 +4270,17 @@ silownik_kolejkujacy_drugi = getchar();
     
 if(silownik_kolejkujacy_drugi == 1)
     {
-    //PORT_F.bits.b6 = 1;   //psikanie powietrzenbem na wiezyczke
-    //PORTF = PORT_F.byte;
-    //PORTC.6 = 1;
-    PORTC.1 = 1; //pobierz grzybek - pojedz po grzybek od biura
-    
+    PORT_F.bits.b6 = 1;   //psikanie powietrzenbem na wiezyczke
+    PORTF = PORT_F.byte;
+    PORTC.6 = 1;
+    //PORTC.1 = 1; //pobierz grzybek - pojedz po grzybek od biura
     }
 else
     {
-    
-    PORTC.1 = 0; //pobierz grzybek czyli jedz do biura
-    
-    //PORT_F.bits.b6 = 0;   //psikanie powietrzenbem na wiezyczke
-    //PORTF = PORT_F.byte;
-    //PORTC.6 = 0; 
+    PORT_F.bits.b6 = 0;   //psikanie powietrzenbem na wiezyczke
+    PORTF = PORT_F.byte;
+    PORTC.6 = 0; 
+    //PORTC.1 = 0; //pobierz grzybek czyli jedz do biura
     }
 
 putchar(90);
@@ -4432,52 +4450,35 @@ krok_tasmociagu_z_lufami = getchar();
 if(krok_tasmociagu_z_lufami == 1)
      {
      
-     /*
      //testwo na prosbe eweliny ilosc pucharow do zmontoqania 
      ///////////////////////////////////////////////////////////////////////////////////////////////
-     il_pretow_gwintowanych = odpytaj_parametr_panelu_duze_liczby(0,112);
-     wyswietl_ilosc_zmontowanych_pucharow(il_pretow_gwintowanych,il_pretow_gwintowanych);
+     //il_pretow_gwintowanych = odpytaj_parametr_panelu_duze_liczby(0,112);
+     //il_pretow_gwintowanych = odpytaj_parametr_panelu(0,112);
+     //wyswietl_ilosc_zmontowanych_pucharow(il_pretow_gwintowanych,il_pretow_gwintowanych);
+     //licznik_pucharow++;
      //aktualizuj_wyswietlacz_ilosci();
      //////////////////////////////////////////////////////////////////////////////////////////////
-     
      
      przyspiesznie = odpytaj_parametr_panelu(96,0);
      predkosc = odpytaj_parametr_panelu(96,16);
      predkosc_obliczona = -100 * predkosc; 
      opoznienie = odpytaj_parametr_panelu(96,32);
-     
-     if(opoznienie < 12)
-        X = 0x6;
-     if(opoznienie >= 12 && opoznienie < 15)
-        X = 0x7;
-     if(opoznienie >= 15 && opoznienie < 20)
-        X = 0x8;
-     if(opoznienie >= 20 && opoznienie < 25)
-        X = 0x9;
-     if(opoznienie >= 25 && opoznienie < 30)
-        X = 0xA;
-     if(opoznienie >= 30 && opoznienie < 50)
-        X = 0xB;
-     if(opoznienie >= 50 && opoznienie < 80)
-        X = 0xC;
-     if(opoznienie >= 80)
-        X = 0xD;
-        
+          
      //przyspieszanie
      //delta_write_param(0x05, 0x07, przyspiesznie);      //zapis do tasmociagu lancuchowego
-     //delay_ms(2000);
-     */
+     //delay_ms(2000);      
+      
      //predkosc
-     
-     #asm("sei")
-     
      delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
      delay_ms(1000);
      
      //opoznienie
-     //final_value = (base_value & 0xFFFF0FFF) | ((unsigned long)(X &0x0F) << 12);
-     //delta_write_param(0x07, 0x04, final_value);
-
+     X = wybierz_X_opoznienie(opoznienie);
+     final_value = (base_value & 0xFFFF0FFF) | ((unsigned long)(X &0x0F) << 12);
+     delta_write_param(0x07, 0x08, final_value);
+     
+     
+     
      komunikacja_startowa_male_puchary(wynik_wyboru_male_puchary);
      delay_ms(500); //do tej komunikacji
      
@@ -5701,7 +5702,7 @@ switch(proces[3])
                 proces[3] = 0;
                 wynik = 1;
                 il_pretow_gwintowanych--;  
-                //aktualizuj_wyswietlacz_ilosci();
+                aktualizuj_wyswietlacz_ilosci();
                  
                 if(start == 7)  //do sytuacji startowej
                     {
@@ -6338,7 +6339,7 @@ TWCR=0x00;
 licznik_pucharow = 0;
 
 // Global enable interrupts (WYMAGANE: asynchroniczny TX dziala przez ISR USART1_DRE)
-#asm("sei")
+//#asm("sei")
 
 //while (1)
 //    {
@@ -6401,6 +6402,7 @@ i2c_init();
 //IN3 na karcie 8
 //IN4 na pcf
 //(sprawdz_pin0(PORTGG,0x71)  //czujnik wykrywajacy kolor zielony
+//(sprawdz_pin1(PORTGG,0x71)  //guzik osoby dokladajacej prety - potwierdza ze wlozyla w przypadku trybu kontunacji
 //(sprawdz_pin2(PORTGG,0x71)  //czujnik wykrywajacy kolor czerwony
 //(sprawdz_pin3(PORTGG,0x71)  //nowy kabel do czujnika zatrzymywania grzebieni - odpinam
 //(sprawdz_pin4(PORTGG,0x71)  //nowy kabel kolor niebieski
