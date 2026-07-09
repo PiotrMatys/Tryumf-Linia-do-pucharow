@@ -3552,7 +3552,10 @@ int zwloka_czasowa = 0;
 int predkosc = 0;
 int predkosc_obliczona = 0;
 int opoznienie = 0;
+bit ruch_grzebini = 0; //Pierre
+bit ruch_lancucha = 0; //Pierre
 static int opoznienie_old;
+
     
 long int time = 0;
 long int time1 = 0;
@@ -3610,6 +3613,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                             {                                                
                             if(start < 8)
                                 PORTB.5 = 1;  //si�ownik ma�y chwytania pr�cika - chwycenie
+                            ruch_grzebini = 1; //Pierre
                             zwrot = 2;
                             time1 = 0;
                             }
@@ -3720,6 +3724,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                         {
                         PORTA.0 = 0; //wylacz silnik falownik
                         PORTA.5 = 0; //wylacz silnik optoprzekanik;
+                        ruch_grzebini = 0; //Pierre
                         na_pewno_przejechalem_grzebieniami_global = 1;
                         sek1 = 0;
                         zwloka_czasowa = 0;
@@ -3749,6 +3754,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
            case 0:                
                     if(sprawdz_pin7(PORTKK,0x79) == 0 & sprawdz_pin3(PORTKK,0x79) == 0 && czekaj_na_reset == 0)
                     {
+                    ruch_lancucha = 1; //Pierre
                     predkosc = odpytaj_parametr_panelu(96,16);
                     predkosc_obliczona = -100 * predkosc; 
                     delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
@@ -3969,7 +3975,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                     wyswietl_czas_czujnikow_kolorow(licznik_wykrylem_normalna,licznik_wykrylem_prozniowa);
                     licznik_wykrylem_normalna = 0;
                     licznik_wykrylem_prozniowa = 0;
-                                        
+                    ruch_lancucha = 0; //Pierre                    
                     
                     if(start >= 10 & tryb_male_puchary == 0)
                         PORTA.2 = 1;  //komunikacja bez rs232 zgodna na zacisniecie szczek
@@ -5047,13 +5053,16 @@ void dekatywuj_czujniki_gdy_wiezyczka_stoi()
 int proces_0()
 {
 int wynik;
+bit kolejkowanie_na_zjezdzalni = 0;
 wynik = 0;
+
 
 switch(proces[0])
     {
     case 0:
         proces[0] = 1;
         zerowanie_czasu();
+        kolejkowanie_na_zjezdzalni = 1; //Pierre
         
     break;
     
@@ -5178,6 +5187,7 @@ switch(proces[0])
     case 10:
             //if(sek0_7s > czas_monterow)
             //    {
+                kolejkowanie_na_zjezdzalni = 0; //Pierre
                 sek0 = 0;
                 proces[0] = 0;
                 wynik = 1;
@@ -5196,12 +5206,14 @@ return wynik;
 int proces_1()
 {
 int wynik;
+bit przygotowanie_nakrecanie = 0; //Pierre
 wynik = 0;
 //zwrotka = 0;
 
 switch(proces[1])
     {
     case 0:
+        przygotowanie_nakrecanie = 1; //Pierre
         sek1_7s = 0;
         sek1 = 0;
         proces[1] = 1;    
@@ -5251,6 +5263,7 @@ switch(proces[1])
     case 5:
             //if(sek1_7s > czas_monterow)
             //    {
+                przygotowanie_nakrecanie = 0; //Pierre
                 sek1 = 0;
                 proces[1] = 0;
                 wynik = 1;
@@ -5272,11 +5285,13 @@ return wynik;
 int proces_2()
 {
 int wynik;
+bit nakrecanie = 0; //Pierre
 wynik = 0;
 
 switch(proces[2])
     {
     case 0:
+        nakrecanie = 1; //Pierre
         sek2_7s = 0;
         sek2 = 0;
         PORTB.3 = 0; //silownik dociskajacy grzybki - na wszelki wypadek w gore gdyby nie byl
@@ -5467,6 +5482,7 @@ switch(proces[2])
     case 10:
             //if(sek2_7s > czas_monterow)
             //    {
+                nakrecanie = 0; //Pierre
                 grzybek_dokrecony = grzybek_biezacy_dokrecony;
                 sek2 = 0;
                 proces[2] = 0;
@@ -5487,11 +5503,13 @@ return wynik;
 int proces_3()
 {
 int wynik;
+bit wkladanie_do_lufy = 0; //Pierre
 wynik = 0;
 
 switch(proces[3])
     {
     case 0:
+        wkladanie_do_lufy = 1; //Pierre
         sek3_7s = 0;
         sek3 = 0;
         proces[3] = 1;
@@ -5698,6 +5716,7 @@ switch(proces[3])
                          //& sprawdz_pin1(PORTKK,0x79) == 0               
             if(sek3 > 20 )
                 {
+                wkladanie_do_lufy = 0; //Pierre
                 sek3 = 0;
                 proces[3] = 0;
                 wynik = 1;
