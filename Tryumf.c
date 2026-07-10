@@ -3614,6 +3614,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                             if(start < 8)
                                 PORTB.5 = 1;  //si�ownik ma�y chwytania pr�cika - chwycenie
                             ruch_grzebini = 1; //Pierre
+                            wyslij(105, 1);        // event etapu -> Pi
                             zwrot = 2;
                             time1 = 0;
                             }
@@ -3725,6 +3726,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                         PORTA.0 = 0; //wylacz silnik falownik
                         PORTA.5 = 0; //wylacz silnik optoprzekanik;
                         ruch_grzebini = 0; //Pierre
+                        wyslij(105, 0);        // event etapu -> Pi
                         na_pewno_przejechalem_grzebieniami_global = 1;
                         sek1 = 0;
                         zwloka_czasowa = 0;
@@ -3755,6 +3757,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                     if(sprawdz_pin7(PORTKK,0x79) == 0 & sprawdz_pin3(PORTKK,0x79) == 0 && czekaj_na_reset == 0)
                     {
                     ruch_lancucha = 1; //Pierre
+                    wyslij(106, 1);        // event etapu -> Pi
                     predkosc = odpytaj_parametr_panelu(96,16);
                     predkosc_obliczona = -100 * predkosc; 
                     delta_write_param(0x07, 0x06, predkosc_obliczona);    //zapis do tasmociagu lancuchowego
@@ -3976,6 +3979,7 @@ while(zwrot == 1 || zwrot == 2 || zwrot == 3 || zwrot == 4 || sekwencja == 0 || 
                     licznik_wykrylem_normalna = 0;
                     licznik_wykrylem_prozniowa = 0;
                     ruch_lancucha = 0; //Pierre                    
+                    wyslij(106, 0);        // event etapu -> Pi
                     
                     if(start >= 10 & tryb_male_puchary == 0)
                         PORTA.2 = 1;  //komunikacja bez rs232 zgodna na zacisniecie szczek
@@ -5063,6 +5067,7 @@ switch(proces[0])
         proces[0] = 1;
         zerowanie_czasu();
         kolejkowanie_na_zjezdzalni = 1; //Pierre
+        wyslij(107, 1);        // event etapu -> Pi
         
     break;
     
@@ -5188,6 +5193,7 @@ switch(proces[0])
             //if(sek0_7s > czas_monterow)
             //    {
                 kolejkowanie_na_zjezdzalni = 0; //Pierre
+                wyslij(107, 0);        // event etapu -> Pi
                 sek0 = 0;
                 proces[0] = 0;
                 wynik = 1;
@@ -5214,6 +5220,7 @@ switch(proces[1])
     {
     case 0:
         przygotowanie_nakrecanie = 1; //Pierre
+        wyslij(108, 1);        // event etapu -> Pi
         sek1_7s = 0;
         sek1 = 0;
         proces[1] = 1;    
@@ -5264,6 +5271,7 @@ switch(proces[1])
             //if(sek1_7s > czas_monterow)
             //    {
                 przygotowanie_nakrecanie = 0; //Pierre
+                wyslij(108, 0);        // event etapu -> Pi
                 sek1 = 0;
                 proces[1] = 0;
                 wynik = 1;
@@ -5292,6 +5300,7 @@ switch(proces[2])
     {
     case 0:
         nakrecanie = 1; //Pierre
+        wyslij(109, 1);        // event etapu -> Pi
         sek2_7s = 0;
         sek2 = 0;
         PORTB.3 = 0; //silownik dociskajacy grzybki - na wszelki wypadek w gore gdyby nie byl
@@ -5483,6 +5492,7 @@ switch(proces[2])
             //if(sek2_7s > czas_monterow)
             //    {
                 nakrecanie = 0; //Pierre
+                wyslij(109, 0);        // event etapu -> Pi
                 grzybek_dokrecony = grzybek_biezacy_dokrecony;
                 sek2 = 0;
                 proces[2] = 0;
@@ -5510,6 +5520,7 @@ switch(proces[3])
     {
     case 0:
         wkladanie_do_lufy = 1; //Pierre
+        wyslij(110, 1);        // event etapu -> Pi
         sek3_7s = 0;
         sek3 = 0;
         proces[3] = 1;
@@ -5717,6 +5728,7 @@ switch(proces[3])
             if(sek3 > 20 )
                 {
                 wkladanie_do_lufy = 0; //Pierre
+                wyslij(110, 0);        // event etapu -> Pi
                 sek3 = 0;
                 proces[3] = 0;
                 wynik = 1;
